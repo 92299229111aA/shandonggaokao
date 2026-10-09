@@ -1,0 +1,93 @@
+# Local dev stack for Shandong Gaokao V1.
+# Usage: cp .env.example .env && docker compose up -d --build
+#
+# Ports are bound to 127.0.0.1 and default to non-standard values so this stack
+# can coexist with other local projects. Override via .env.
+
+name: shandong-gaokao
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-gaokao}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gaokao_dev_only}
+      POSTGRES_DB: ${POSTGRES_DB:-gaokao}
+      # deterministic collation so ORDER BY on text is stable across machines
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gaokao} -d ${POSTGRES_DB:-gaokao}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  cache:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:${REDIS_HOST_PORT:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL_DOCKER:-postgresql+psycopg://gaokao:gaokao_dev_only@db:5432/gaokao}
+      REDIS_URL: ${REDIS_URL_DOCKER:-redis://cache:6379/0}
+      API_HOST: 0.0.0.0
+      API_PORT: "8000"
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      # Auto-apply migrations + seed demo fixtures on boot (dev only)
+      AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
+      AUTO_SEED: ${AUTO_SEED:-true}
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    volumes:
+      - ./backend/app:/srv/app
+      - ./backend/alembic:/srv/alembic
+      - ./backend/tests:/srv/tests
+      - ./backend/pyproject.toml:/srv/pyproject.toml:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/v1/meta/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: dev
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://127.0.0.1:8000}
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "127.0.0.1:${FRONTEND_HOST_PORT:-3000}:3000"
+    volumes:
+      - ./frontend/src:/srv/src
+      - ./frontend/public:/srv/public
+      - ./frontend/next.config.ts:/srv/next.config.ts:ro
+      - ./frontend/tailwind.config.ts:/srv/tailwind.config.ts:ro
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  pgdata:

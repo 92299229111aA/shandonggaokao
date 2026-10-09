@@ -1,0 +1,42 @@
+# ---- Python / backend ----
+backend/.venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# ---- Node / frontend ----
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/.turbo/
+*.tsbuildinfo
+next-env.d.ts
+
+# ---- Env / secrets ----
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ---- Data / generated ----
+data/raw/
+data/processed/
+*.log
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# ---- Generated analysis output (regenerate with backend/app/ingestion/snapshot_run.py) ----
+docs/real-run.json
+docs/_preview*/
+
+# local-only helper (environment-specific network workaround)
+scripts/push_via_api.py

@@ -1,0 +1,57 @@
+[project]
+name = "shandong-gaokao-backend"
+version = "0.1.0"
+description = "Shandong Gaokao intelligent volunteer-decision backend (V1)"
+requires-python = ">=3.12"
+readme = "../README.md"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers -p no:cacheprovider"
+markers = [
+    "integration: requires a live PostgreSQL (TEST_DATABASE_URL)",
+]
+log_cli = false
+log_level = "WARNING"
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = [".venv", "alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+ignore = [
+    "E501",  # line length handled by formatter
+    "B008",  # FastAPI Depends() in defaults is idiomatic
+    "RUF012",# mutable class attrs in pydantic models
+    # This codebase deliberately quotes Chinese official terminology (招生章程,
+    # 专业类, 一分一段表 …). Full-width punctuation there is correct usage, not a
+    # confusable-character bug.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+    # Mutable-default warnings do not apply to the frozen/slots dataclasses in
+    # app/rules: those defaults are immutable value objects, not shared state.
+    "RUF009",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["SIM117"]
+"ops/**" = ["E402"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+check_untyped_defs = true
+# The scoring/optimizer layers are pure-Python and must typecheck; ORM/SQLAlchemy
+# models rely on plugin-free dynamic typing, so they are checked leniently.
+ignore_missing_imports = true
+exclude = ["^\\.venv/", "^alembic/versions/"]
+
+[[tool.mypy.overrides]]
+module = ["ortools.*"]
+ignore_missing_imports = true

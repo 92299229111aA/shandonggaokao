@@ -1,0 +1,4 @@
+# pnpm 11 requires an explicit decision for packages with install scripts.
+# `sharp` (next/image) ships a prebuilt binary and only needs its linker script.
+allowBuilds:
+  sharp: true
