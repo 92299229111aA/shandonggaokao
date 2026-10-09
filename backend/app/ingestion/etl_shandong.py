@@ -607,11 +607,13 @@ def load_plans(
         plan_name = str(row.get("专业名称") or "").strip()
         plan_count = _to_int(row.get("招生人数")) or 0
         tuition = _to_int(row.get("学费(元)")) or 0
-        # 官方专业代码 has no column on admission_plans. It is worth keeping (debugging,
-        # and the only exact handle on a programme), so it rides along in the free-text
-        # field rather than justifying a schema change. Format: 「专业代码 <code>」
-        major_code = str(row.get("专业代码") or "").strip()
-        special = f"专业代码 {major_code}" if major_code else None
+        # `专业代码` in the Shandong plan files is a PER-SCHOOL SEQUENCE NUMBER (all
+        # values are two characters: '17', 'E1', 'H1' …), not an MOE major code — verified
+        # against all 21,421 rows of 普通类一段. So it identifies a plan within a school,
+        # and cannot join to the MOE major catalogue. Labelled honestly to avoid the
+        # reader mistaking it for the national code.
+        major_sequence = str(row.get("专业代码") or "").strip()
+        special = f"院校专业序号 {major_sequence}" if major_sequence else None
 
         existing_plan = session.execute(
             select(AdmissionPlan).where(
@@ -643,8 +645,14 @@ def load_plans(
             if report.plans % 2000 == 0:
                 session.flush()
         else:
+            # Refresh every field this loader owns, not just the numbers — otherwise a
+            # column added later never reaches already-loaded rows on a re-run.
             existing_plan.plan_count = plan_count
             existing_plan.tuition_fee = tuition
+            existing_plan.plan_name = plan_name
+            existing_plan.special_requirements = special
+            existing_plan.snapshot_id = snapshot.id
+            existing_plan.source_document_id = plans_doc.id
     session.flush()
 
     # ---- outcomes ----
