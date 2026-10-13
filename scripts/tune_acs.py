@@ -23,10 +23,9 @@ Run: python scripts/tune_acs.py [sample_size]
 
 from __future__ import annotations
 
-import math
 import statistics
 import sys
-from collections import Counter, defaultdict
+from collections import defaultdict
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
@@ -39,7 +38,6 @@ from app.admission.models import (  # noqa: E402
     AdmissionOutcome,
     AdmissionPlan,
     ExamYearStats,
-    ProgramSeries,
 )
 from app.admission.models import AdmissionCycle  # noqa: E402
 from app.common.enums import RiskBucket, risk_bucket_for  # noqa: E402

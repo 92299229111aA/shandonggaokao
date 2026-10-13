@@ -22,7 +22,6 @@ from sqlalchemy.orm import Session
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from app.admission.models import AdmissionPlan, ProgramSeries  # noqa: E402
-from app.reference.models import Major  # noqa: E402
 
 NEW_ROOT = Path(r"D:\BaiduNetdiskDownload\志愿高报资料")
 CATALOGUE_FRAGMENT = "绝密报考-普通高等学校本科专业目录（2023年完整版）"

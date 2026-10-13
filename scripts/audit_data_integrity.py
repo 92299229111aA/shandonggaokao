@@ -9,11 +9,10 @@ Read-only. Run: python scripts/audit_data_integrity.py
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))

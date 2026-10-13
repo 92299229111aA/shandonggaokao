@@ -164,7 +164,7 @@ def main() -> int:
         for severity, title, detail in RESULTS:
             print(f"  [{severity}] {title} —— {detail}")
     print()
-    print(f"  （本次创建了临时档案，id 见上；如需清理请删除位次 600000 / 60000 的测试档案）")
+    print("  （本次创建了临时档案，id 见上；如需清理请删除位次 600000 / 60000 的测试档案）")
     return 0
 
 

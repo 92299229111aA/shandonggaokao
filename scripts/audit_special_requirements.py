@@ -15,9 +15,7 @@ Read-only. Run: python scripts/audit_special_requirements.py
 
 from __future__ import annotations
 
-import os
 import sys
-from collections import Counter
 from pathlib import Path
 
 from sqlalchemy import text

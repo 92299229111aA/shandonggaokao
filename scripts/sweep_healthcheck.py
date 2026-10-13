@@ -1,9 +1,8 @@
 """Sweep the Health Check thresholds and measure the effect on a real 96-item scheme.
 
 The shipped thresholds were chosen against the DEMO fixtures. On the real dataset a
-healthy scheme scores 0 because 63% of plans have fewer than 5 seats and most small
-programs also swing more than 30% year to year — the checks fire so often that they
-carry no information.
+scoring model matters: the per-code grouping introduced in D-022 is what keeps the score
+meaningful when a single check fires dozens of times.
 
 This sweeps both thresholds over a real scheme and reports issue counts and the
 resulting health score, so the choice is made on measured behaviour rather than taste.
@@ -22,26 +21,17 @@ from pathlib import Path
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
 sys.path.insert(0, str(BACKEND))
 
-from sqlalchemy import create_engine, select  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app.common.enums import HealthSeverity, RiskBucket  # noqa: E402
 from app.healthcheck.assembly import build_context  # noqa: E402
-from app.healthcheck.types import SEVERITY_PENALTY  # noqa: E402
+from app.healthcheck.types import HealthIssue, score_for  # noqa: E402
 
 SCHEME_ID = int(sys.argv[1]) if len(sys.argv) > 1 else 18
 VERSION_NO = int(sys.argv[2]) if len(sys.argv) > 2 else 1
 CANDIDATE_RANK = 60_000
 
-
-def score_of(warnings: int, infos: int, errors: int = 0) -> int:
-    return max(
-        0,
-        100
-        - errors * SEVERITY_PENALTY[HealthSeverity.ERROR]
-        - warnings * SEVERITY_PENALTY[HealthSeverity.WARNING]
-        - infos * SEVERITY_PENALTY[HealthSeverity.INFO],
-    )
 
 
 def main() -> int:
@@ -108,21 +98,33 @@ def main() -> int:
     print()
 
     # ---- combined health score ----
+    #
+    # Score through the engine's own scorer. An earlier version of this script
+    # reimplemented the arithmetic as `100 - warn*5 - info*1`, which is a *second source
+    # of truth* — it kept reporting 0 at every threshold long after the engine had moved
+    # to per-code grouping with a repeat cap, so the sweep silently stopped describing
+    # the shipped behaviour.
     print("=" * 92)
-    print("组合效果：健康分（100 − 警告×5 − 提示×1，下限 0）")
+    print("组合效果（分数由 app.healthcheck.types.score_for 计算，不在此重复实现）")
     print("=" * 92)
-    print(f"{'小计划阈值':>10}{'缩减阈值':>10}{'警告':>7}{'提示':>7}{'健康分':>8}")
+    print(f"{'小计划阈值':>10}{'缩减阈值':>10}{'问题条数':>9}{'健康分':>8}")
     print("-" * 92)
     for small in (3, 5, 10):
         for reduction in (0.30, 0.50, 0.70):
-            warn = 0
-            info = 0
+            issues: list[HealthIssue] = []
             for item in items:
                 if 0 < item.plan_count < small:
-                    if item.risk_bucket in {RiskBucket.STABLE.value, RiskBucket.SAFE.value}:
-                        warn += 1
-                    else:
-                        info += 1
+                    issues.append(
+                        HealthIssue(
+                            code="SMALL_PLAN_COUNT",
+                            severity=(
+                                HealthSeverity.WARNING
+                                if item.risk_bucket in {RiskBucket.STABLE.value, RiskBucket.SAFE.value}
+                                else HealthSeverity.INFO
+                            ),
+                            message="",
+                        )
+                    )
                 history = [c for c in item.plan_count_history if c > 0]
                 if not history:
                     continue
@@ -131,13 +133,15 @@ def main() -> int:
                     continue
                 change = (item.plan_count - median) / median
                 if change <= -reduction:
-                    warn += 1
+                    issues.append(
+                        HealthIssue(code="PLAN_REDUCED", severity=HealthSeverity.WARNING, message="")
+                    )
                 elif change >= reduction:
-                    info += 1
-            # fixed issues from the real run: 2 risk shortfalls (warning), 1 low confidence
-            warn += 2
-            info += 1
-            print(f"{small:>10}{reduction*100:>9.0f}%{warn:>7}{info:>7}{score_of(warn, info):>8}")
+                    issues.append(
+                        HealthIssue(code="PLAN_EXPANDED", severity=HealthSeverity.INFO, message="")
+                    )
+            score, _ = score_for(issues)
+            print(f"{small:>10}{reduction*100:>9.0f}%{len(issues):>9}{score:>8}")
     print()
 
     # what the full check run actually produced, for reference

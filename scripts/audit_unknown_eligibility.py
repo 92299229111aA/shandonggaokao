@@ -15,7 +15,6 @@ Run: python scripts/audit_unknown_eligibility.py
 
 from __future__ import annotations
 
-import os
 import sys
 from collections import Counter
 from pathlib import Path

@@ -15,7 +15,6 @@ Run: python scripts/audit_schema_drift.py
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 from sqlalchemy import create_engine, inspect
 

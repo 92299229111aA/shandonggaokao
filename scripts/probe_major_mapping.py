@@ -113,9 +113,6 @@ def main() -> int:
         series_names = list(
             session.execute(select(ProgramSeries.canonical_name).distinct()).scalars()
         )
-        plan_count = session.execute(
-            select(AdmissionPlan.id).where(AdmissionPlan.is_demo.is_(False))
-        ).scalars().all()
 
     matched_major: list[tuple[int, str, dict[str, str]]] = []
     unmatched_major: list[str] = []

@@ -14,7 +14,6 @@ Run: python scripts/audit_edge_inputs.py
 from __future__ import annotations
 
 import json
-import os
 import sys
 import urllib.error
 import urllib.request
@@ -24,7 +23,6 @@ from sqlalchemy import text
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from app.admission.models import ExamYearStats  # noqa: E402
 from app.db.session import session_scope  # noqa: E402
 
 API = "http://127.0.0.1:8000/api/v1"

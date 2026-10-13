@@ -14,13 +14,11 @@ Run: python scripts/audit_discipline_codes.py
 
 from __future__ import annotations
 
-import os
 import sys
 from collections import Counter
 from pathlib import Path
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 

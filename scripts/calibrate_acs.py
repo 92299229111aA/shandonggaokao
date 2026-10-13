@@ -16,7 +16,6 @@ Run: python scripts/calibrate_acs.py [lambda] [sample]
 from __future__ import annotations
 
 import os
-import statistics
 import sys
 from collections import defaultdict
 from pathlib import Path

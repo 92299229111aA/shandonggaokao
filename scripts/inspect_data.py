@@ -38,11 +38,9 @@ def inspect(path: Path, sheet: int | str | None, nrows: int) -> None:
         print(f"--- sheet: {target!r} ---")
         if target is None:
             frame = pd.read_csv(path, nrows=nrows, dtype=str, header=None)
-            header = None
         else:
             # header=None first so we can see whether row 0 is a title or the header
             frame = pd.read_excel(path, sheet_name=target, header=None, nrows=nrows, dtype=str)
-            header = 0
 
         print(f"shape (first {nrows} rows x {frame.shape[1]} cols)")
         print()

@@ -14,10 +14,7 @@ Read-only. Run: python scripts/audit_algorithm_invariants.py
 
 from __future__ import annotations
 
-import os
-import statistics
 import sys
-from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
