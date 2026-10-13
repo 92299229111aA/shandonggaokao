@@ -162,7 +162,7 @@ export default function PreferencesPage() {
           profile_id: state.profileId!,
           preference_id: preference.id,
         });
-        update({ sessionId: run.session.id });
+        update({ sessionId: run.session.id, inputWarnings: run.input_warnings ?? [] });
         router.push("/recommendations");
       } catch (error) {
         setRunError(errorMessage(error));

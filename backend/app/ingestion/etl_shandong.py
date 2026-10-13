@@ -613,7 +613,6 @@ def load_plans(
         # and cannot join to the MOE major catalogue. Labelled honestly to avoid the
         # reader mistaking it for the national code.
         major_sequence = str(row.get("专业代码") or "").strip()
-        special = f"院校专业序号 {major_sequence}" if major_sequence else None
 
         existing_plan = session.execute(
             select(AdmissionPlan).where(
@@ -636,7 +635,7 @@ def load_plans(
                     plan_count=plan_count,
                     tuition_fee=tuition,
                     duration_years=4,
-                    special_requirements=special,
+                    major_sequence=major_sequence or None,
                     series_match_quality="EXACT",
                     is_demo=False,
                 )
@@ -650,7 +649,7 @@ def load_plans(
             existing_plan.plan_count = plan_count
             existing_plan.tuition_fee = tuition
             existing_plan.plan_name = plan_name
-            existing_plan.special_requirements = special
+            existing_plan.major_sequence = major_sequence or None
             existing_plan.snapshot_id = snapshot.id
             existing_plan.source_document_id = plans_doc.id
     session.flush()

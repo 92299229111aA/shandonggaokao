@@ -15,6 +15,9 @@ export interface FlowState {
   preferenceId: number | null;
   sessionId: number | null;
   schemeId: number | null;
+  /** Warnings about the *inputs* from the last run (e.g. 位次 beyond the 一段 range).
+   *  Carried across the navigation to /recommendations so they are actually seen. */
+  inputWarnings: string[];
 }
 
 const EMPTY: FlowState = {
@@ -23,6 +26,7 @@ const EMPTY: FlowState = {
   preferenceId: null,
   sessionId: null,
   schemeId: null,
+  inputWarnings: [],
 };
 
 export function useFlowState() {

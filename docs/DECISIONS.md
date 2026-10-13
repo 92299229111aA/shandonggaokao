@@ -783,3 +783,89 @@ ETL 名义上是幂等的，实际上只能新建不能修正。
   这些断言自建输入，**数据库为空时也不会静默跳过** —— 原先的失败正是静默的。
 - `scripts/verify_discipline_filter.py`：在 4,000 条真实候选上实测打分差值。
 - 浏览器验证更新为断言「学科筛选标注为可用」，10/10 通过。
+
+
+---
+
+## D-028 修复审计发现的 P1–P5
+
+**日期**：阶段 15
+**背景**：见 `docs/AUDIT_FINDINGS.md`。五个决定由用户确认后执行。
+
+### P1 —— 专业序号从 `special_requirements` 移出（高危回归）
+
+**问题**：上一轮把「院校专业序号」写进了 `admission_plans.special_requirements`，
+而规则引擎 `SpecialRequirementTextRule` 把任何非空值解读为**未确认的招生章程要求** →
+全部 73,198 条计划的资格变成 UNKNOWN。而 `counts_as_safe = (eligibility == 'PASS' and acs >= 60)`，
+于是**保底计数恒为 0，「稳/保」承诺整体失效**。
+
+**修复**：
+- 新增 `admission_plans.major_sequence`（`String(8)`）承载序号；
+- 迁移 `0009_plan_major_sequence` 用 SQL 把既有数据从 `special_requirements`
+  搬到新列并清空原列（只匹配 `院校专业序号 %` 前缀，真实章程文本不动；downgrade 可逆）；
+- ETL 改为写 `major_sequence`，`special_requirements` 留给真正的章程要求；
+- 接口返回 `major_sequence` 字段。
+
+**结果**：`special_requirements` 0 条、`major_sequence` 73,198 条；
+推荐结果 **19,019 条全部 PASS**（此前 UNKNOWN 19,019），
+**保底恢复 13,481 条**；体检分 48 → 72。
+
+**为什么 345 项测试与 52 项 E2E 都没抓到**：它们断言「没有 FAIL」，
+从不断言「有 PASS」。新增的回归测试补上了这条。
+
+### P2 —— 消除开发库结构漂移
+
+**问题**：迁移文件在已应用之后被改过（0007 加了索引、改了索引名），
+开发库版本号相同但结构陈旧，5 处差异，
+且**没有任何检查会发现**（pytest 用测试库，`alembic check` 不在任何脚本里）。
+
+**修复**：`alembic downgrade 0006_admission_rules_plans && alembic upgrade head`，
+只重建 candidate / recommendation 两张 schema（参考与招生数据保留）。
+重建还会顺带验证「从零迁移」这条一直正确、却从未在开发库上走过的路径。
+备份先在 `backups/gaokao-pre-P2-*.dump`（26.5 MB，337 个对象，已用 `pg_restore -l` 验证可读）。
+
+**结果**：结构漂移 **0 处**。
+
+### P4 —— 选考科目必须恰好 3 门
+
+`SubjectSelection = Annotated[list[SubjectCode], Field(min_length=3, max_length=3)]`，
+`ProfileCreate` 与 `ProfileUpdate` 共用。山东 3+3 下其他数量不可能满足任何选科要求，
+此前却能得到一份看起来正常的完整方案。
+
+### P5 —— 位次超出达线人数要显著提示
+
+**决定**：**接受但提示**（不拒绝建档），与用户确认一致。
+
+`RecommendationRunResponse.input_warnings` 新增；
+当 `rank > exam_year_stats.ranked_candidates` 时给出说明
+（位次无历史参照、ACS 会系统性偏高、仅作参考）。
+前端新增 `FlowState.inputWarnings` 跨页携带，并在 `/recommendations` 顶部显示醒目提示卡 ——
+后端返回一个没人渲染的字段不算修复。
+
+### P3 —— 并发版本冲突从 500 改为 409
+
+**问题**：两个请求**都通过**乐观锁检查，**都插入** `version_no = N+1`，
+第二个撞上 `uq_scheme_versions_scheme_id_version_no` → 未捕获的 IntegrityError → **HTTP 500**。
+连续复现 3/3。产品文档承诺此处返回 409。
+
+**修复**：`_require_unlocked` 改用
+`select(Scheme).where(...).with_for_update()`。
+事务由路由器提交（`session.commit()` 在服务返回之后），
+所以行锁覆盖「检查 + 插入」全程，第二个请求在拿到锁时已看到 `lock_version` 已递增 → 409。
+五个写入口全部经由这一个函数，改一处即全覆盖。
+
+**结果**：并发返回码 `[200, 409]`，不再出现 5xx。
+
+### 顺带记录的新数据质量事实（未修复）
+
+- **计划人数 1–2 人的计划有 26,879 条，占 36.7%**。这类专业分数线年际波动极大。
+  体检的 `SMALL_PLAN_THRESHOLD = 3` 且为 ERROR 级，
+  如此大比例的样本可能让该规则被"脱敏"（满屏警告等于没有警告）。
+- **2,508 条计划学费为 0**、37 条超过 10 万元，疑似源文件缺值或口径问题。
+
+### 验证
+
+- `scripts/verify_fixes.py`：五组修复的端到端验证，全部通过。
+- `backend/tests/test_audit_regressions.py`：7 项回归测试（1 项需真实数据）。
+- 浏览器验证 `verify_input_warning.mjs`：提示卡确实渲染，4/4 通过。
+- 345+ 项测试全通过、E2E 52/52、ruff / mypy / tsc / eslint 全部干净。

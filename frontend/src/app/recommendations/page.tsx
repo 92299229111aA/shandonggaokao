@@ -105,6 +105,21 @@ export default function RecommendationsPage() {
         </CardContent>
       </Card>
 
+      {state.inputWarnings.length ? (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base text-amber-900">请先核对你的输入</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            {state.inputWarnings.map((warning) => (
+              <p key={warning} className="text-sm text-amber-900">
+                ⚠ {warning}
+              </p>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
+
       {items.isError ? (
         <p className="rounded-md border border-destructive px-3 py-2 text-sm text-destructive">
           {errorMessage(items.error)}

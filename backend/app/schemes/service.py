@@ -352,7 +352,13 @@ class SchemeService:
     # ---------------- internals ----------------
 
     def _require_unlocked(self, scheme_id: int, expected_version: int) -> Scheme:
-        scheme = self.session.get(Scheme, scheme_id)
+        # Lock the row for the rest of the transaction. Without it two editors can both
+        # read lock_version = N, both pass this check, and both try to insert
+        # version_no = N+1 — the loser hits uq_scheme_versions_scheme_id_version_no and
+        # the API answers 500 instead of the promised 409.
+        scheme = self.session.execute(
+            select(Scheme).where(Scheme.id == scheme_id).with_for_update()
+        ).scalar_one_or_none()
         if scheme is None:
             raise NotFoundError(f"志愿方案 {scheme_id} 不存在")
         if scheme.lock_version != expected_version:

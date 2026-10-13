@@ -92,6 +92,8 @@ class RecommendationItemDTO(BaseModel):
     duration_years: int = 4
     campus_name: str | None = None
     # 特殊要求
+    # 专业代码（山东计划表口径，院校内部序号，非教育部代码）
+    major_sequence: str | None = None
     subject_requirement_text: str | None = None
     special_requirements: str | None = None
     requirement_notes: list[str] = Field(default_factory=list)
@@ -117,6 +119,7 @@ class RecommendationRunResponse(BaseModel):
     risk_distribution: dict[str, int] = Field(default_factory=dict)
     shortfall_notice: str | None = None
     relax_suggestions: list[str] = Field(default_factory=list)
+    input_warnings: list[str] = Field(default_factory=list)
 
 
 class PoolShortfall(BaseModel):

@@ -9,8 +9,9 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.admission.models import AdmissionPlan, ProgramSeries
+from app.admission.models import AdmissionCycle, AdmissionPlan, ExamYearStats, ProgramSeries
 from app.admission.repository import PlanRepository
+from app.candidate.models import Profile
 from app.common.enums import EligibilityStatus
 from app.common.errors import NotFoundError
 from app.recommendation.models import RecommendationItem
@@ -86,7 +87,42 @@ class RecommendationService:
             risk_distribution=distribution,
             shortfall_notice=shortfall,
             relax_suggestions=suggestions,
+            input_warnings=self._input_warnings(run),
         )
+
+    def _input_warnings(self, run: RunSession) -> list[str]:
+        """Flag inputs that are accepted but make the output unrepresentative.
+
+        A rank beyond the entire 一段 population is the case that matters: the rank
+        percentile q_c = rank / ranked_candidates exceeds 1, so every historical entry
+        looks easier than the candidate and the ACS skews high. The result is still
+        returned — the candidate may be inputting a 位次 from a different category — but
+        it must not be presented as a normal recommendation.
+        """
+        profile = self.session.get(Profile, run.profile_id)
+        if profile is None or profile.rank is None:
+            return []
+
+        cycle = self.session.get(AdmissionCycle, run.cycle_id)
+        if cycle is None:
+            return []
+
+        population = self.session.execute(
+            select(ExamYearStats.ranked_candidates).where(
+                ExamYearStats.province_code == cycle.province_code,
+                ExamYearStats.exam_year == cycle.exam_year,
+                ExamYearStats.program_level == cycle.program_level,
+            )
+        ).scalars().first()
+        if not population or profile.rank <= population:
+            return []
+
+        return [
+            f"你填写的位次 {profile.rank:,} 超出了 {cycle.exam_year} 年本省"
+            f"本科批的达线人数 {population:,}。"
+            "在本年度数据下该位次没有对应的历史参照，ACS 会系统性偏高，"
+            "结果仅作参考，请核对位次口径（一分一段表使用的是累计人数）。"
+        ]
 
     def _relax_suggestions(self, result: PipelineResult) -> list[str]:
         """Tell the candidate exactly which constraints are costing them options."""
@@ -291,6 +327,7 @@ class RecommendationService:
             tuition_fee=int(detail.get("tuition_fee") or 0),
             duration_years=int(detail.get("duration_years") or 4),
             campus_name=detail.get("campus_name"),
+            major_sequence=detail.get("major_sequence"),
             subject_requirement_text=None,
             special_requirements=detail.get("special_requirements"),
             requirement_notes=requirement_notes,

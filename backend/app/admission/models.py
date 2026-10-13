@@ -326,6 +326,13 @@ class AdmissionPlan(Base, TimestampMixin):
     duration_years: Mapped[int] = mapped_column(Integer, nullable=False, default=4)
     # Free text from 招生章程: 语种、单科、体检、性别、校区、办学地点等
     special_requirements: Mapped[str | None] = mapped_column(Text)
+    # The 专业代码 printed in the Shandong plan files is a *per-school sequence number*
+    # ('E1', '17'), not the MOE major code. It identifies a plan within one school and is
+    # kept for debugging only. It needs its own column: the rules engine reads
+    # `special_requirements` as unverified 招生章程 text and answers UNKNOWN for any
+    # non-empty value, so storing a sequence number there silently disables the safety
+    # bucket for every plan.
+    major_sequence: Mapped[str | None] = mapped_column(String(8))
     campus_name: Mapped[str | None] = mapped_column(String(64))
     study_mode: Mapped[str | None] = mapped_column(String(32))
     series_match_quality: Mapped[str] = mapped_column(String(16), nullable=False, default="EXACT")

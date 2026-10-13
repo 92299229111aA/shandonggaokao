@@ -111,6 +111,7 @@ class PlanRepository(Repository[AdmissionPlan]):
                 AdmissionPlan.tuition_fee,
                 AdmissionPlan.duration_years,
                 AdmissionPlan.special_requirements,
+                AdmissionPlan.major_sequence,
                 AdmissionPlan.campus_name,
                 AdmissionPlan.series_match_quality,
                 AdmissionPlan.is_demo,

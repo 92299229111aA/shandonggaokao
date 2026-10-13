@@ -28,6 +28,9 @@ data/raw/
 data/processed/
 *.log
 
+# Database backups (pg_dump output, tens of MB, never source)
+backups/
+
 # ---- OS / editor ----
 .DS_Store
 Thumbs.db

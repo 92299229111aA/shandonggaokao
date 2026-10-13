@@ -10,6 +10,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.candidate.models import VALID_SUBJECT_CODES
 
 SubjectCode = Literal["PHY", "CHM", "BIO", "POL", "HIS", "GEO"]
+# 山东 is 3+3: the 选考科目 are exactly three, always. A profile with any other count
+# cannot match a single 选科要求, so every rule would answer UNKNOWN while the user still
+# got a full-looking recommendation. Rejected at the boundary instead.
+SubjectSelection = Annotated[list[SubjectCode], Field(min_length=3, max_length=3)]
 # 单科成绩 can also be a foreign language (英语单科要求很常见), so the score row
 # accepts a wider set than the three selectable 选考科目.
 ScoreSubjectCode = Literal["PHY", "CHM", "BIO", "POL", "HIS", "GEO", "ENG", "JPN", "RUS", "GER", "FRA", "SPA"]
@@ -74,7 +78,7 @@ class ProfileCreate(BaseModel):
     cycle_id: int
     score: Annotated[int, Field(ge=0, le=750)] | None = None
     rank: Annotated[int, Field(gt=0)] | None = None
-    subjects: Annotated[list[SubjectCode], Field(min_length=1, max_length=6)]
+    subjects: SubjectSelection
     foreign_language: str | None = Field(default="ENG", max_length=16)
     sex: Literal["MALE", "FEMALE", "UNKNOWN"] | None = None
     notes: str | None = None
@@ -99,7 +103,7 @@ class ProfileUpdate(BaseModel):
     display_name: str | None = Field(default=None, max_length=64)
     score: Annotated[int, Field(ge=0, le=750)] | None = None
     rank: Annotated[int, Field(gt=0)] | None = None
-    subjects: Annotated[list[SubjectCode], Field(min_length=1, max_length=6)] | None = None
+    subjects: SubjectSelection | None = None
     foreign_language: str | None = Field(default=None, max_length=16)
     sex: Literal["MALE", "FEMALE", "UNKNOWN"] | None = None
     notes: str | None = None

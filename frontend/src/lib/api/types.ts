@@ -255,6 +255,8 @@ export interface RecommendationRun {
   risk_distribution: Record<string, number>;
   shortfall_notice: string | null;
   relax_suggestions: string[];
+  /** Remarks about the inputs themselves, e.g. a 位次 beyond the 一段 population. */
+  input_warnings?: string[];
 }
 
 export interface SchemeItem {
