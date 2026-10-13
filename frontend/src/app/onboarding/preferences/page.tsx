@@ -261,10 +261,11 @@ export default function PreferencesPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>偏好的学科门类</Label>
-              {preferenceOptions.data && !disciplinesAvailable ? (
-                <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">
-                  当前数据源没有学科门类映射（山东计划表的「专业代码」是院校内部序号，不是教育部代码），
-                  因此选学科<strong>暂不影响推荐结果</strong>。请改用下方「绝不接受的专业」按名称筛选。
+              {preferenceOptions.data ? (
+                <p className="text-xs text-muted-foreground">
+                  {disciplinesAvailable
+                    ? "按专业所属门类匹配，权重 35%。未填则不参与计算（不会按 0 分处理）。"
+                    : "当前数据源缺少学科门类映射，选学科暂不影响结果，请改用下方「绝不接受的专业」。"}
                 </p>
               ) : null}
               <div className="flex flex-wrap gap-2">
