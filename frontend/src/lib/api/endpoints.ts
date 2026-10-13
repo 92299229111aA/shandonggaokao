@@ -60,6 +60,15 @@ export const catalogApi = {
     apiFetch<Page<Record<string, unknown>>>(`/catalog/universities${buildQuery(params)}`),
   majors: (params: { search?: string; limit?: number } = {}) =>
     apiFetch<Page<Record<string, unknown>>>(`/catalog/majors${buildQuery(params)}`),
+  /** Preference form options, derived from the loaded snapshot rather than hardcoded. */
+  preferenceOptions: () =>
+    apiFetch<{
+      cycle_id: number | null;
+      snapshot_code: string | null;
+      provinces: Array<{ code: string; name: string; university_count: number; is_home: boolean }>;
+      disciplines: Array<{ code: string; name: string; available: boolean }>;
+      notes: Record<string, unknown>;
+    }>("/catalog/preference-options"),
 };
 
 export const recommendationApi = {

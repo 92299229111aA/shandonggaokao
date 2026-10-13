@@ -8,12 +8,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox, Input, Label } from "@/components/ui/input";
-import { metaApi, profileApi, recommendationApi } from "@/lib/api/endpoints";
+import { catalogApi, metaApi, profileApi, recommendationApi } from "@/lib/api/endpoints";
 import { errorMessage } from "@/lib/api/errors";
 import { useFlowState } from "@/lib/flow-state";
 import type { RiskMode } from "@/lib/api/types";
 
-const DISCIPLINES = [
+// Fallbacks only — the live lists come from /catalog/preference-options, which derives
+// them from the loaded snapshot. Hardcoding them here is what previously capped the
+// province list at 9 while the data held 31 provincial-level regions.
+const DISCIPLINES_FALLBACK = [
   { code: "01", name: "哲学" },
   { code: "02", name: "经济学" },
   { code: "03", name: "法学" },
@@ -24,21 +27,13 @@ const DISCIPLINES = [
   { code: "08", name: "工学" },
   { code: "09", name: "农学" },
   { code: "10", name: "医学" },
+  { code: "11", name: "军事学" },
   { code: "12", name: "管理学" },
   { code: "13", name: "艺术学" },
+  { code: "14", name: "交叉学科" },
 ] as const;
 
-const PROVINCES = [
-  { code: "37", name: "山东省" },
-  { code: "11", name: "北京市" },
-  { code: "31", name: "上海市" },
-  { code: "32", name: "江苏省" },
-  { code: "33", name: "浙江省" },
-  { code: "44", name: "广东省" },
-  { code: "42", name: "湖北省" },
-  { code: "51", name: "四川省" },
-  { code: "61", name: "陕西省" },
-] as const;
+const PROVINCES_FALLBACK = [{ code: "37", name: "山东省" }] as const;
 
 const RISK_MODES: Array<{ value: RiskMode; label: string; detail: string }> = [
   { value: "STEADY", label: "稳健", detail: "5 高冲 / 10 冲 / 15 边界 / 36 稳 / 30 保" },
@@ -64,6 +59,22 @@ export default function PreferencesPage() {
   const dataset = useQuery({ queryKey: ["dataset"], queryFn: () => metaApi.dataset() });
 
   const applicationLimit = dataset.data?.cycle?.application_limit ?? 96;
+
+  // Provinces and disciplines come from the data, not from a hardcoded list. The old
+  // list offered 9 provinces while the snapshot covers 31 provincial-level regions, so
+  // 地域偏好 could not even name 河北.
+  const preferenceOptions = useQuery({
+    queryKey: ["preference-options"],
+    queryFn: () => catalogApi.preferenceOptions(),
+  });
+
+  const DISCIPLINES = preferenceOptions.data?.disciplines ?? DISCIPLINES_FALLBACK;
+  const PROVINCES = preferenceOptions.data?.provinces ?? PROVINCES_FALLBACK;
+  // Selecting a 学科 currently matches nothing: the plan files carry a per-school major
+  // sequence number, not an MOE major code, and no 门类 column exists. Say so rather
+  // than offer a control that silently does nothing.
+  const disciplinesAvailable =
+    preferenceOptions.data?.disciplines?.some((item) => item.available) ?? false;
 
   const [riskMode, setRiskMode] = useState<RiskMode>("BALANCED");
   const [targetCount, setTargetCount] = useState<number | null>(null);
@@ -250,6 +261,12 @@ export default function PreferencesPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>偏好的学科门类</Label>
+              {preferenceOptions.data && !disciplinesAvailable ? (
+                <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">
+                  当前数据源没有学科门类映射（山东计划表的「专业代码」是院校内部序号，不是教育部代码），
+                  因此选学科<strong>暂不影响推荐结果</strong>。请改用下方「绝不接受的专业」按名称筛选。
+                </p>
+              ) : null}
               <div className="flex flex-wrap gap-2">
                 {DISCIPLINES.map((discipline) => {
                   const active = includeDisciplines.includes(discipline.code);
@@ -322,6 +339,11 @@ export default function PreferencesPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>优先考虑的省份</Label>
+              <p className="text-xs text-muted-foreground">
+                {preferenceOptions.data
+                  ? `${PROVINCES.length} 个省级行政区（按当前数据中可报院校数量排序）`
+                  : "正在读取省份列表…"}
+              </p>
               <div className="flex flex-wrap gap-2">
                 {PROVINCES.map((province) => {
                   const active = includeProvinces.includes(province.code);
@@ -341,6 +363,9 @@ export default function PreferencesPage() {
                       }`}
                     >
                       {province.name}
+                      {"university_count" in province ? (
+                        <span className="ml-1 opacity-70">{province.university_count}</span>
+                      ) : null}
                     </button>
                   );
                 })}
