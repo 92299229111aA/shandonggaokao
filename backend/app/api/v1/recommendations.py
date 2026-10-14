@@ -18,6 +18,7 @@ from app.recommendation.schemas import (
     SessionDTO,
 )
 from app.recommendation.service import RecommendationService
+from app.recommendation.sorts import ItemSort
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
 
@@ -69,6 +70,13 @@ def list_recommendation_items(
     eligibility: Annotated[EligibilityStatus | None, Query(description="按资格结论过滤")] = None,
     only_pooled: Annotated[bool, Query(description="只看进入候选池的志愿")] = True,
     search: Annotated[str | None, Query(description="学校或专业名搜索")] = None,
+    sort: Annotated[ItemSort, Query(description="候选浏览排序（不影响最终方案顺序）")] = (
+        ItemSort.PREFERENCE
+    ),
+    province_name: Annotated[str | None, Query(description="按院校所在省过滤")] = None,
+    is_985: Annotated[bool | None, Query(description="只看 985")] = None,
+    is_211: Annotated[bool | None, Query(description="只看 211")] = None,
+    is_double_first_class: Annotated[bool | None, Query(description="只看双一流")] = None,
 ):
     return RecommendationService(session).list_items(
         session_id=session_id,
@@ -78,4 +86,9 @@ def list_recommendation_items(
         eligibility=eligibility.value if eligibility else None,
         only_pooled=only_pooled,
         search=search,
+        sort=sort.value,
+        province_name=province_name,
+        is_985=is_985,
+        is_211=is_211,
+        is_double_first_class=is_double_first_class,
     )

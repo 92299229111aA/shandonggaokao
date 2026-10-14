@@ -232,6 +232,8 @@ export interface RecommendationItem {
   tuition_fee: number;
   duration_years: number;
   campus_name: string | null;
+  /** 山东计划表口径的院校内部序号，非教育部专业代码。 */
+  major_sequence: string | null;
   subject_requirement_text: string | null;
   special_requirements: string | null;
   requirement_notes: string[];
@@ -247,6 +249,7 @@ export interface RecommendationItemPage {
   offset: number;
   risk_distribution: Record<string, number>;
   pool_size: number;
+  sort: string;
 }
 
 export interface RecommendationRun {

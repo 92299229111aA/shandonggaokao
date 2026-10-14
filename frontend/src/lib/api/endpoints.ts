@@ -82,7 +82,19 @@ export const recommendationApi = {
   session: (id: number) => apiFetch<RecommendationRun["session"]>(`/recommendations/${id}`),
   items: (
     sessionId: number,
-    params: { limit?: number; offset?: number; risk_bucket?: string; eligibility?: string; search?: string; only_pooled?: boolean } = {},
+    params: {
+      limit?: number;
+      offset?: number;
+      risk_bucket?: string;
+      eligibility?: string;
+      search?: string;
+      only_pooled?: boolean;
+      sort?: string;
+      province_name?: string;
+      is_985?: boolean;
+      is_211?: boolean;
+      is_double_first_class?: boolean;
+    } = {},
   ) => apiFetch<RecommendationItemPage>(`/recommendations/${sessionId}/items${buildQuery(params)}`),
   item: (itemId: number) => apiFetch<RecommendationItem>(`/recommendations/items/${itemId}`),
 };

@@ -6,7 +6,7 @@ import statistics
 from collections import Counter
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.admission.models import AdmissionCycle, AdmissionPlan, ExamYearStats, ProgramSeries
@@ -25,6 +25,7 @@ from app.recommendation.schemas import (
     RecommendationRunResponse,
     SessionDTO,
 )
+from app.recommendation.sorts import ItemSort
 from app.reference.models import University
 from app.scoring.acs import confidence_label
 
@@ -169,46 +170,113 @@ class RecommendationService:
         eligibility: str | None = None,
         only_pooled: bool = True,
         search: str | None = None,
+        sort: str = ItemSort.PREFERENCE.value,
+        province_name: str | None = None,
+        is_985: bool | None = None,
+        is_211: bool | None = None,
+        is_double_first_class: bool | None = None,
     ) -> RecommendationItemPage:
+        """One page of candidates, filtered, ordered and sliced **by the database**.
+
+        The previous implementation read every item row, joined plan details for all of
+        them, then filtered, sorted and paginated in Python. On a real session that is
+        19,019 rows and cost ~7.7 s per request *regardless of `limit`* — so the UI could
+        neither show more than a fraction of the pool nor filter it.
+
+        `search` used to be applied after the slice, which meant a school sitting outside
+        the first page could never be found. Both are fixed by letting SQL do the work.
+        """
         if self.session.get(RunSession, session_id) is None:
             raise NotFoundError(f"推荐会话 {session_id} 不存在")
 
-        base = select(RecommendationItem).where(RecommendationItem.session_id == session_id)
+        conditions = [RecommendationItem.session_id == session_id]
         if only_pooled:
-            base = base.where(RecommendationItem.in_candidate_pool.is_(True))
+            conditions.append(RecommendationItem.in_candidate_pool.is_(True))
         if risk_bucket:
-            base = base.where(RecommendationItem.risk_bucket == risk_bucket)
+            conditions.append(RecommendationItem.risk_bucket == risk_bucket)
         if eligibility:
-            base = base.where(RecommendationItem.eligibility == eligibility)
+            conditions.append(RecommendationItem.eligibility == eligibility)
 
-        rows = list(self.session.execute(base).scalars())
-        details = self._plan_details([row.plan_id for row in rows])
-
-        if search:
-            needle = search.strip()
-            rows = [
-                row
-                for row in rows
-                if needle in details.get(row.plan_id, {}).get("plan_name", "")
-                or needle in details.get(row.plan_id, {}).get("university_name", "")
-            ]
-
-        # Default ordering mirrors the final sort intent: preference first.
-        rows.sort(
-            key=lambda row: (
-                -(row.preference_score if row.preference_score is not None else 0.0),
-                (row.acs if row.acs is not None else 100.0),
+        if search and search.strip():
+            needle = f"%{search.strip()}%"
+            conditions.append(
+                or_(
+                    AdmissionPlan.plan_name.ilike(needle),
+                    University.name.ilike(needle),
+                )
             )
+        if province_name:
+            conditions.append(University.province_name == province_name)
+        for flag, column in (
+            (is_985, University.is_985),
+            (is_211, University.is_211),
+            (is_double_first_class, University.is_double_first_class),
+        ):
+            if flag is not None:
+                conditions.append(column.is_(flag))
+
+        # The name filters need the joins, so they are always present rather than added
+        # only when a filter is used — one query shape is easier to reason about than four.
+        def with_joins(stmt: Select) -> Select:
+            return (
+                stmt.join(AdmissionPlan, AdmissionPlan.id == RecommendationItem.plan_id)
+                .join(ProgramSeries, ProgramSeries.id == AdmissionPlan.series_id)
+                .join(University, University.id == ProgramSeries.university_id)
+            )
+
+        total = int(
+            self.session.execute(
+                with_joins(select(func.count()).select_from(RecommendationItem)).where(*conditions)
+            ).scalar_one()
         )
-        total = len(rows)
-        page = rows[offset : offset + limit]
+
+        stmt = (
+            with_joins(select(RecommendationItem))
+            .where(*conditions)
+            .order_by(*self._order_for(sort))
+            .limit(limit)
+            .offset(offset)
+        )
+        rows = list(self.session.execute(stmt).scalars())
+
+        # Only the current page needs its plan details and outcome history joined.
+        details = self._plan_details([row.plan_id for row in rows])
         return RecommendationItemPage(
-            items=[self._to_dto(row, details.get(row.plan_id, {})) for row in page],
+            items=[self._to_dto(row, details.get(row.plan_id, {})) for row in rows],
             total=total,
             limit=limit,
             offset=offset,
             risk_distribution=self._risk_distribution(session_id),
             pool_size=self._pool_size(session_id),
+            sort=sort,
+        )
+
+    @staticmethod
+    def _order_for(sort: str) -> tuple:
+        """SQL ordering per sort key, each with a stable tiebreaker.
+
+        `NULLS LAST` matters: an item with no ACS must not sort as if it scored zero, and
+        `RecommendationItem.id` keeps paging deterministic when the primary key ties.
+        """
+        if sort == ItemSort.ACS_DESC.value:
+            return (RecommendationItem.acs.desc().nullslast(), RecommendationItem.id)
+        if sort == ItemSort.ACS_ASC.value:
+            return (RecommendationItem.acs.asc().nullslast(), RecommendationItem.id)
+        if sort == ItemSort.TUITION_ASC.value:
+            # Tuition lives on the plan, which is already joined.
+            return (AdmissionPlan.tuition_fee.asc(), RecommendationItem.id)
+        if sort == ItemSort.PLAN_COUNT_DESC.value:
+            return (
+                AdmissionPlan.plan_count.desc(),
+                RecommendationItem.acs.desc().nullslast(),
+                RecommendationItem.id,
+            )
+        # Default: preference first, mirroring the two-step design (select by preference,
+        # then order by risk). Ties fall back to the safer choice.
+        return (
+            RecommendationItem.preference_score.desc().nullslast(),
+            RecommendationItem.acs.asc().nullslast(),
+            RecommendationItem.id,
         )
 
     def get_item(self, item_id: int) -> RecommendationItemDTO:

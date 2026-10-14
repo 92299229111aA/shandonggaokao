@@ -109,6 +109,7 @@ class RecommendationItemPage(BaseModel):
     offset: int
     risk_distribution: dict[str, int] = Field(default_factory=dict)
     pool_size: int = 0
+    sort: str = "PREFERENCE"
 
 
 class RecommendationRunResponse(BaseModel):

@@ -1,36 +1,105 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
-import { AcsMeter, ConfidenceBadge, EligibilityBadge, RiskBadge } from "@/components/badges";
-import { Badge } from "@/components/ui/badge";
+import { RecommendationCard } from "@/components/recommendation-card";
+import { RiskBadge } from "@/components/badges";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Checkbox, Input, Label, Select } from "@/components/ui/input";
 import { KeyValueList, Modal } from "@/components/ui/modal";
-import { recommendationApi, schemeApi } from "@/lib/api/endpoints";
+import { catalogApi, recommendationApi, schemeApi } from "@/lib/api/endpoints";
 import { errorMessage } from "@/lib/api/errors";
 import { useFlowState } from "@/lib/flow-state";
 import type { RecommendationItem } from "@/lib/api/types";
 import { ACS_DISCLAIMER, RISK_LABELS, RISK_ORDER, formatRank } from "@/lib/utils";
 
+/** 50 per page: 志愿填报 is a comparison task, so position beats endless scrolling. */
+const PAGE_SIZE = 50;
+
+const SORT_OPTIONS = [
+  { value: "PREFERENCE", label: "偏好匹配度（默认）" },
+  { value: "ACS_DESC", label: "安全指数：从高到低" },
+  { value: "ACS_ASC", label: "安全指数：从低到高" },
+  { value: "TUITION_ASC", label: "学费：从低到高" },
+  { value: "PLAN_COUNT_DESC", label: "招生人数：从多到少" },
+];
+
+interface Filters {
+  riskBucket: string;
+  provinceName: string;
+  is985: boolean;
+  is211: boolean;
+  isDoubleFirstClass: boolean;
+}
+
+const EMPTY_FILTERS: Filters = {
+  riskBucket: "",
+  provinceName: "",
+  is985: false,
+  is211: false,
+  isDoubleFirstClass: false,
+};
+
+function activeCount(filters: Filters): number {
+  return (
+    (filters.riskBucket ? 1 : 0) +
+    (filters.provinceName ? 1 : 0) +
+    (filters.is985 ? 1 : 0) +
+    (filters.is211 ? 1 : 0) +
+    (filters.isDoubleFirstClass ? 1 : 0)
+  );
+}
+
 export default function RecommendationsPage() {
   const router = useRouter();
   const { state, update, loaded } = useFlowState();
-  const [riskFilter, setRiskFilter] = useState<string>("");
+
+  const [page, setPage] = useState(0);
+  const [sort, setSort] = useState("PREFERENCE");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [explain, setExplain] = useState<RecommendationItem | null>(null);
 
+  // Typing should not fire a request per keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Any change to the query resets to the first page, otherwise the user lands on an
+  // empty page after narrowing the result set.
+  useEffect(() => {
+    setPage(0);
+  }, [debouncedSearch, sort, filters]);
+
+  const filterCount = activeCount(filters);
+
   const items = useQuery({
-    queryKey: ["recommendation-items", state.sessionId, riskFilter, search],
+    queryKey: ["recommendation-items", state.sessionId, page, sort, debouncedSearch, filters],
     queryFn: () =>
       recommendationApi.items(state.sessionId!, {
-        limit: 200,
-        risk_bucket: riskFilter || undefined,
-        search: search || undefined,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+        sort,
+        search: debouncedSearch || undefined,
+        risk_bucket: filters.riskBucket || undefined,
+        province_name: filters.provinceName || undefined,
+        is_985: filters.is985 || undefined,
+        is_211: filters.is211 || undefined,
+        is_double_first_class: filters.isDoubleFirstClass || undefined,
       }),
+    enabled: loaded && Boolean(state.sessionId),
+  });
+
+  // Province list comes from the loaded snapshot rather than a hardcoded array.
+  const options = useQuery({
+    queryKey: ["preference-options"],
+    queryFn: () => catalogApi.preferenceOptions(),
     enabled: loaded && Boolean(state.sessionId),
   });
 
@@ -61,8 +130,14 @@ export default function RecommendationsPage() {
     );
   }
 
+  const total = items.data?.total ?? 0;
+  const shown = items.data?.items.length ?? 0;
+  const lastPage = Math.max(0, Math.ceil(total / PAGE_SIZE) - 1);
+  const rangeStart = total === 0 ? 0 : page * PAGE_SIZE + 1;
+  const rangeEnd = page * PAGE_SIZE + shown;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <header className="space-y-1">
         <h1 className="text-xl font-semibold">第 3 步 · 推荐结果</h1>
         <p className="text-sm text-muted-foreground">{ACS_DISCLAIMER}</p>
@@ -81,28 +156,103 @@ export default function RecommendationsPage() {
             <button
               key={bucket}
               type="button"
-              onClick={() => setRiskFilter(riskFilter === bucket ? "" : bucket)}
+              onClick={() =>
+                setFilters((previous) => ({
+                  ...previous,
+                  riskBucket: previous.riskBucket === bucket ? "" : bucket,
+                }))
+              }
               className={`flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition-colors ${
-                riskFilter === bucket ? "border-primary bg-accent" : "border-input hover:bg-accent/60"
+                filters.riskBucket === bucket
+                  ? "border-primary bg-accent"
+                  : "border-input hover:bg-accent/60"
               }`}
             >
               <RiskBadge bucket={bucket} />
               <span className="tabular-nums">{count}</span>
             </button>
           ))}
-          {riskFilter ? (
-            <Button variant="ghost" size="sm" onClick={() => setRiskFilter("")}>
-              清除筛选
-            </Button>
-          ) : null}
-          <div className="ml-auto w-56">
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex flex-wrap items-center gap-3 pt-5">
+          <div className="min-w-[12rem] flex-1">
             <Input
-              placeholder="搜索学校或专业"
+              placeholder="搜索学校或专业（在整个候选池中搜索）"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
           </div>
+
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-muted-foreground">排序</Label>
+            <Select className="w-52" value={sort} onChange={(event) => setSort(event.target.value)}>
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          <Button variant="outline" onClick={() => setFiltersOpen((open) => !open)}>
+            筛选{filterCount ? ` (${filterCount})` : ""}
+            <span className="ml-1 text-xs">{filtersOpen ? "▲" : "▼"}</span>
+          </Button>
+
+          {filterCount ? (
+            <Button variant="ghost" size="sm" onClick={() => setFilters(EMPTY_FILTERS)}>
+              清除筛选
+            </Button>
+          ) : null}
         </CardContent>
+
+        {filtersOpen ? (
+          <CardContent className="border-t pt-4">
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">院校所在省</Label>
+                <Select
+                  value={filters.provinceName}
+                  onChange={(event) =>
+                    setFilters((previous) => ({ ...previous, provinceName: event.target.value }))
+                  }
+                >
+                  <option value="">全部省份</option>
+                  {(options.data?.provinces ?? []).map((province) => (
+                    <option key={province.code} value={province.name}>
+                      {province.name}（{province.university_count}）
+                    </option>
+                  ))}
+                </Select>
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label className="text-xs">院校层次</Label>
+                <div className="flex flex-wrap gap-4 pt-1">
+                  {(
+                    [
+                      ["is985", "只要 985"],
+                      ["is211", "只要 211"],
+                      ["isDoubleFirstClass", "只要双一流"],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label key={key} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={filters[key]}
+                        onChange={(event) =>
+                          setFilters((previous) => ({ ...previous, [key]: event.target.checked }))
+                        }
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        ) : null}
       </Card>
 
       {state.inputWarnings.length ? (
@@ -126,97 +276,84 @@ export default function RecommendationsPage() {
         </p>
       ) : null}
 
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          {total === 0
+            ? "没有符合条件的志愿"
+            : `共 ${total.toLocaleString()} 条符合条件，当前显示第 ${rangeStart}–${rangeEnd} 条`}
+        </p>
+        {lastPage > 0 ? (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page === 0}
+              onClick={() => setPage((current) => Math.max(0, current - 1))}
+            >
+              上一页
+            </Button>
+            <span className="text-sm tabular-nums text-muted-foreground">
+              {page + 1} / {lastPage + 1}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= lastPage}
+              onClick={() => setPage((current) => Math.min(lastPage, current + 1))}
+            >
+              下一页
+            </Button>
+          </div>
+        ) : null}
+      </div>
+
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {(items.data?.items ?? []).map((item) => (
-          <Card key={item.item_id} className="flex flex-col">
-            <CardHeader className="pb-2">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <CardTitle className="text-sm leading-snug">{item.plan_name}</CardTitle>
-                  <CardDescription className="text-xs">
-                    {item.university_name}
-                    {item.city_name ? ` · ${item.city_name}` : ""}
-                  </CardDescription>
-                </div>
-                <RiskBadge bucket={item.risk_bucket} />
-              </div>
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {item.is_985 ? <Badge variant="secondary">985</Badge> : null}
-                {item.is_211 ? <Badge variant="secondary">211</Badge> : null}
-                {item.is_double_first_class ? <Badge variant="secondary">双一流</Badge> : null}
-                {item.cooperative !== "NONE" ? <Badge variant="outline">合作办学</Badge> : null}
-                {item.eligibility !== "PASS" ? <EligibilityBadge eligibility={item.eligibility} /> : null}
-              </div>
-            </CardHeader>
-            <CardContent className="flex flex-1 flex-col gap-3">
-              <AcsMeter acs={item.acs} />
-
-              <div className="flex flex-wrap items-center gap-2">
-                <ConfidenceBadge label={item.confidence_label} value={item.confidence} />
-                <Badge variant="outline">
-                  偏好匹配 {item.preference_score !== null ? item.preference_score.toFixed(0) : "—"}
-                </Badge>
-              </div>
-
-              <div className="space-y-1 text-xs text-muted-foreground">
-                <div className="flex justify-between">
-                  <span>今年计划</span>
-                  <span className="tabular-nums text-foreground">{item.plan_count} 人</span>
-                </div>
-                {item.history.length ? (
-                  <div className="flex justify-between">
-                    <span>近年最低位次</span>
-                    <span className="tabular-nums text-foreground">
-                      {item.history
-                        .slice(-3)
-                        .map((row) => `${row.exam_year}:${formatRank(row.min_rank)}`)
-                        .join(" / ")}
-                    </span>
-                  </div>
-                ) : null}
-                {item.plan_change_ratio !== null ? (
-                  <div className="flex justify-between">
-                    <span>计划变化</span>
-                    <span
-                      className={`tabular-nums ${
-                        item.plan_change_ratio < 0 ? "text-destructive" : "text-[hsl(var(--risk-safe))]"
-                      }`}
-                    >
-                      {item.plan_change_ratio > 0 ? "+" : ""}
-                      {(item.plan_change_ratio * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                ) : null}
-                <div className="flex justify-between">
-                  <span>学费</span>
-                  <span className="tabular-nums text-foreground">{item.tuition_fee} 元/年</span>
-                </div>
-              </div>
-
-              {item.special_requirements || item.eligibility === "UNKNOWN" ? (
-                <p className="rounded border border-[hsl(var(--risk-border))] bg-amber-50 px-2 py-1 text-xs text-amber-900">
-                  特殊要求：{item.special_requirements ?? "存在需人工核对的要求"}
-                </p>
-              ) : null}
-
-              <div className="mt-auto">
-                <Button variant="outline" size="sm" className="w-full" onClick={() => setExplain(item)}>
-                  查看解释
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <RecommendationCard key={item.item_id} item={item} onExplain={setExplain} />
         ))}
       </div>
 
-      {items.data && items.data.items.length === 0 ? (
+      {total > 0 && lastPage > 0 ? (
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page === 0}
+            onClick={() => setPage((current) => Math.max(0, current - 1))}
+          >
+            上一页
+          </Button>
+          <span className="text-sm tabular-nums text-muted-foreground">
+            第 {page + 1} / {lastPage + 1} 页
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= lastPage}
+            onClick={() => setPage((current) => Math.min(lastPage, current + 1))}
+          >
+            下一页
+          </Button>
+        </div>
+      ) : null}
+
+      {items.data && shown === 0 && total === 0 && filterCount + (debouncedSearch ? 1 : 0) > 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle>没有符合条件的志愿</CardTitle>
-            <CardDescription>
-              请放宽硬性排除条件（专业/地域/学费），或回到上一步调整偏好后重新生成。
-            </CardDescription>
+            <CardTitle>当前筛选下没有志愿</CardTitle>
+            <CardDescription>请放宽筛选条件，或清除筛选后重新浏览。</CardDescription>
           </CardHeader>
+          <CardContent>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setFilters(EMPTY_FILTERS);
+                setSearch("");
+              }}
+            >
+              清除全部筛选
+            </Button>
+          </CardContent>
         </Card>
       ) : null}
 
@@ -228,13 +365,14 @@ export default function RecommendationsPage() {
 
       <div className="flex items-center gap-3">
         <Button
-          disabled={createScheme.isPending || !items.data?.items.length}
+          disabled={createScheme.isPending || !state.sessionId}
           onClick={() => createScheme.mutate()}
         >
           {createScheme.isPending ? "生成方案中…" : "用这些候选生成志愿方案"}
         </Button>
         <span className="text-xs text-muted-foreground">
           组合优化会同时考虑偏好、可信度、风险层目标与集中度，候选不足时不会凑数。
+          排序只影响浏览顺序，不改变方案结果。
         </span>
       </div>
 
@@ -282,70 +420,37 @@ export default function RecommendationsPage() {
             </div>
 
             <div>
-              <h3 className="mb-2 font-medium">偏好匹配</h3>
+              <h3 className="mb-2 font-medium">招生与历史</h3>
               <KeyValueList
                 entries={[
-                  ["偏好总分", explain.preference_score?.toFixed(1) ?? "—"],
+                  ["院校专业序号", explain.major_sequence ?? "—"],
+                  ["今年计划", `${explain.plan_count} 人`],
+                  ["学费", `${explain.tuition_fee} 元/年`],
+                  ["学制", `${explain.duration_years} 年`],
+                  ["校区", explain.campus_name ?? "—"],
                   [
-                    "各维度",
-                    Object.entries(
-                      (explain.preference_dimensions?.dimensions as Array<Record<string, unknown>>) ?? [],
-                    )
-                      .map(([, value]) => {
-                        const row = value as { dimension?: string; score?: number; available?: boolean };
-                        return row.available ? `${row.dimension}:${row.score}` : null;
-                      })
-                      .filter(Boolean)
-                      .join(" / ") || "无可用维度",
+                    "近年最低位次",
+                    explain.history.length
+                      ? explain.history
+                          .map((row) => `${row.exam_year}:${formatRank(row.min_rank)}`)
+                          .join("、")
+                      : "—",
                   ],
                 ]}
               />
-              <p className="mt-2 text-xs text-muted-foreground">
-                缺失的偏好维度会从分母中剔除，不会按 0 分处理。
-              </p>
             </div>
 
             <div>
-              <h3 className="mb-2 font-medium">历年录取</h3>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="py-1">年份</th>
-                    <th className="py-1">最低位次</th>
-                    <th className="py-1">最低分</th>
-                    <th className="py-1">计划</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {explain.history.map((row) => (
-                    <tr key={row.exam_year} className="border-b last:border-0">
-                      <td className="py-1">{row.exam_year}</td>
-                      <td className="py-1 tabular-nums">{formatRank(row.min_rank)}</td>
-                      <td className="py-1 tabular-nums">{row.min_score ?? "—"}</td>
-                      <td className="py-1 tabular-nums">{row.plan_count ?? "—"}</td>
-                    </tr>
-                  ))}
-                  {explain.history.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="py-2 text-muted-foreground">
-                        没有可用的历史录取数据，ACS 取中性值 50。
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+              <h3 className="mb-2 font-medium">资格与偏好</h3>
+              <KeyValueList
+                entries={[
+                  ["资格结论", explain.eligibility],
+                  ["选科要求", explain.subject_requirement_text ?? "—"],
+                  ["特殊要求", explain.special_requirements ?? "—"],
+                  ["合作办学", explain.cooperative === "NONE" ? "否" : explain.cooperative],
+                ]}
+              />
             </div>
-
-            {explain.requirement_notes.length ? (
-              <div>
-                <h3 className="mb-2 font-medium">报考要求提示</h3>
-                <ul className="space-y-1 text-xs">
-                  {explain.requirement_notes.map((note) => (
-                    <li key={note}>· {note}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
           </div>
         ) : null}
       </Modal>
