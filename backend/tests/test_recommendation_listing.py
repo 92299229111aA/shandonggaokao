@@ -261,3 +261,251 @@ def test_unknown_sort_falls_back_to_default(db_session, seeded) -> None:
     assert values == sorted(values, reverse=True)
 
 
+# ---------------- editor pool: risk interleave, exclusion, filter-aware counts ----------------
+
+BUCKETS = ("HIGH_REACH", "REACH", "BORDER", "STABLE", "SAFE")
+PER_BUCKET = 40
+# Distinct ACS band per bucket so ordering assertions are unambiguous. ACS would normally
+# determine the bucket; here both are set explicitly so either can be varied independently.
+ACS_BASE = {"HIGH_REACH": 10.0, "REACH": 35.0, "BORDER": 50.0, "STABLE": 65.0, "SAFE": 85.0}
+
+
+@pytest.fixture()
+def mixed(db_session):
+    """A session with an equal number of items in every risk bucket.
+
+    The editor's problem was that `limit` returned a single bucket, so the fixture needs
+    several buckets with the same size to make an interleave observable.
+    """
+    cycle = db_session.execute(select(AdmissionCycle).limit(1)).scalars().first()
+    if cycle is None:
+        cycle = AdmissionCycle(
+            province_code="37",
+            exam_year=2026,
+            exam_category="SUMMER_REGULAR",
+            batch_code="REGULAR_BATCH_1",
+            application_limit=96,
+        )
+        db_session.add(cycle)
+        db_session.flush()
+
+    model = db_session.execute(select(ModelVersion).limit(1)).scalars().first()
+    if model is None:
+        model = ModelVersion(code="mix-v1", label="测试", parameters={})
+        db_session.add(model)
+        db_session.flush()
+
+    snapshot = db_session.execute(select(DatasetSnapshot).limit(1)).scalars().first()
+    if snapshot is None:
+        snapshot = DatasetSnapshot(code="MIX", label="测试", status="PUBLISHED")
+        db_session.add(snapshot)
+        db_session.flush()
+
+    profile = Profile(cycle_id=cycle.id, exam_year=2026, rank=1000, subjects=["PHY", "CHM", "BIO"])
+    db_session.add(profile)
+    db_session.flush()
+    preference = PreferenceProfile(
+        profile_id=profile.id, version=1, risk_mode="BALANCED", candidate_rank=1000, target_count=96
+    )
+    db_session.add(preference)
+    db_session.flush()
+    run = RunSession(
+        profile_id=profile.id,
+        preference_profile_id=preference.id,
+        cycle_id=cycle.id,
+        snapshot_id=snapshot.id,
+        model_version_id=model.id,
+        profile_version=1,
+        preference_version=1,
+        policy_version="test",
+        model_version=model.code,
+        status="SUCCEEDED",
+    )
+    db_session.add(run)
+    db_session.flush()
+
+    university = University(
+        ministry_code="MIX001", name="混合大学", province_code="37", province_name="山东省"
+    )
+    db_session.add(university)
+    db_session.flush()
+
+    indexes: dict[str, list[int]] = {bucket: [] for bucket in BUCKETS}
+    counter = 0
+    for bucket in BUCKETS:
+        for offset in range(PER_BUCKET):
+            series = ProgramSeries(
+                series_key=f"MIX|{counter}",
+                canonical_name="计算机科学与技术",
+                university_id=university.id,
+                first_year=2022,
+                last_year=2025,
+            )
+            db_session.add(series)
+            db_session.flush()
+            plan = AdmissionPlan(
+                cycle_id=cycle.id,
+                series_id=series.id,
+                snapshot_id=snapshot.id,
+                plan_name=f"{bucket}-{offset:03d}",
+                plan_count=10,
+                tuition_fee=5000,
+                duration_years=4,
+                is_demo=False,
+            )
+            db_session.add(plan)
+            db_session.flush()
+            item = RecommendationItem(
+                session_id=run.id,
+                plan_id=plan.id,
+                eligibility="PASS",
+                acs=ACS_BASE[bucket] + offset * 0.1,  # decreasing within a bucket
+                confidence=0.9,
+                risk_bucket=bucket,
+                preference_score=50.0,  # identical in every bucket: forces the tiebreaker
+                in_candidate_pool=True,
+            )
+            db_session.add(item)
+            db_session.flush()
+            indexes[bucket].append(item.id)
+            counter += 1
+    db_session.flush()
+    return {"session_id": run.id, "indexes": indexes}
+
+
+def test_risk_mix_interleaves_all_buckets_on_the_first_page(db_session, mixed) -> None:
+    """The editor needs every bucket visible immediately, not one bucket per page."""
+    page = RecommendationService(db_session).list_items(
+        session_id=mixed["session_id"], limit=10, offset=0, sort=ItemSort.RISK_MIX.value
+    )
+    seen = [item.risk_bucket for item in page.items]
+    assert set(seen) == set(BUCKETS), f"首页只出现了 {set(seen)}"
+    # One full round means the first five are one of each, in bucket order.
+    assert seen[:5] == list(BUCKETS)
+
+
+def test_risk_mix_pages_without_gaps_or_repeats(db_session, mixed) -> None:
+    """Round-robin must stay stable across pages, otherwise paging loses items."""
+    service = RecommendationService(db_session)
+    total = PER_BUCKET * len(BUCKETS)
+    collected: list[int] = []
+    page_size = 15
+    offset = 0
+    while offset < total:
+        page = service.list_items(
+            session_id=mixed["session_id"],
+            limit=page_size,
+            offset=offset,
+            sort=ItemSort.RISK_MIX.value,
+        )
+        collected.extend(item.item_id for item in page.items)
+        offset += page_size
+    assert len(collected) == total, f"收集 {len(collected)} 条，应为 {total}"
+    assert len(set(collected)) == total, "存在重复条目"
+
+
+def test_preference_tiebreak_prefers_the_safer_candidate(db_session, mixed) -> None:
+    """With equal preference scores the tiebreaker must show 稳 before 高冲.
+
+    Ascending ACS was the bug: it put the hardest programmes first and made the editor's
+    pool look like it contained only 高冲. Every item here shares `preference_score`, so
+    the tiebreaker alone decides the order and the bucket bands become visible.
+    """
+    page = RecommendationService(db_session).list_items(
+        session_id=mixed["session_id"],
+        limit=PER_BUCKET * len(BUCKETS),
+        offset=0,
+        sort=ItemSort.PREFERENCE.value,
+    )
+    seen = [item.risk_bucket for item in page.items]
+    # Safest band first, hardest last: one contiguous run per bucket.
+    expected = [bucket for bucket in reversed(BUCKETS) for _ in range(PER_BUCKET)]
+    assert seen == expected
+
+
+def test_exclude_scheme_id_drops_items_already_in_the_scheme(db_session, mixed) -> None:
+    """The editor must not offer candidates it already holds."""
+    from app.recommendation.models import Scheme, SchemeItem, SchemeVersion
+
+    run_id = mixed["session_id"]
+    scheme = Scheme(session_id=run_id, risk_mode="BALANCED", target_count=96, current_version_no=1)
+    db_session.add(scheme)
+    db_session.flush()
+    version = SchemeVersion(scheme_id=scheme.id, version_no=1, operation="OPTIMIZE", item_count=3)
+    db_session.add(version)
+    db_session.flush()
+    chosen = [mixed["indexes"]["SAFE"][0], mixed["indexes"]["SAFE"][1], mixed["indexes"]["STABLE"][0]]
+    for position, item_id in enumerate(chosen, start=1):
+        db_session.add(
+            SchemeItem(
+                scheme_version_id=version.id,
+                recommendation_item_id=item_id,
+                position=position,
+                locked=False,
+                fixed_position=False,
+            )
+        )
+    db_session.flush()
+
+    service = RecommendationService(db_session)
+    page = service.list_items(
+        session_id=run_id, limit=500, offset=0, exclude_scheme_id=scheme.id
+    )
+    assert page.total == PER_BUCKET * len(BUCKETS) - len(chosen)
+    returned = {item.item_id for item in page.items}
+    assert returned.isdisjoint(chosen), "排除后仍返回了方案内已存在的志愿"
+
+
+def test_bucket_counts_reflect_filters_but_not_the_bucket_filter(db_session, mixed) -> None:
+    """Tab counts must match what the list will contain, per bucket."""
+    service = RecommendationService(db_session)
+
+    plain = service.list_items(session_id=mixed["session_id"], limit=1, offset=0)
+    assert plain.bucket_counts == {bucket: PER_BUCKET for bucket in BUCKETS}
+
+    # Selecting a bucket must not zero the other tabs.
+    only_safe = service.list_items(
+        session_id=mixed["session_id"], limit=1, offset=0, risk_bucket="SAFE"
+    )
+    assert only_safe.total == PER_BUCKET
+    assert only_safe.bucket_counts == {bucket: PER_BUCKET for bucket in BUCKETS}
+
+    # A non-bucket filter must narrow every tab.
+    no_match = service.list_items(
+        session_id=mixed["session_id"], limit=1, offset=0, search="不存在的专业"
+    )
+    assert no_match.bucket_counts == {}
+
+
+def test_bucket_counts_shrink_after_excluding_a_scheme(db_session, mixed) -> None:
+    """Adding candidates to the scheme must lower the counts the editor shows."""
+    from app.recommendation.models import Scheme, SchemeItem, SchemeVersion
+
+    scheme = Scheme(
+        session_id=mixed["session_id"], risk_mode="BALANCED", target_count=96, current_version_no=1
+    )
+    db_session.add(scheme)
+    db_session.flush()
+    version = SchemeVersion(scheme_id=scheme.id, version_no=1, operation="OPTIMIZE", item_count=2)
+    db_session.add(version)
+    db_session.flush()
+    for position, item_id in enumerate(mixed["indexes"]["BORDER"][:2], start=1):
+        db_session.add(
+            SchemeItem(
+                scheme_version_id=version.id,
+                recommendation_item_id=item_id,
+                position=position,
+                locked=False,
+                fixed_position=False,
+            )
+        )
+    db_session.flush()
+
+    page = RecommendationService(db_session).list_items(
+        session_id=mixed["session_id"], limit=1, offset=0, exclude_scheme_id=scheme.id
+    )
+    assert page.bucket_counts["BORDER"] == PER_BUCKET - 2
+    assert page.bucket_counts["SAFE"] == PER_BUCKET
+
+
+

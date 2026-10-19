@@ -250,6 +250,8 @@ export interface RecommendationItemPage {
   risk_distribution: Record<string, number>;
   pool_size: number;
   sort: string;
+  /** 当前筛选下的分层计数（不含风险层自身过滤），编辑器标签用它。 */
+  bucket_counts: Record<string, number>;
 }
 
 export interface RecommendationRun {

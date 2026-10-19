@@ -110,6 +110,10 @@ class RecommendationItemPage(BaseModel):
     risk_distribution: dict[str, int] = Field(default_factory=dict)
     pool_size: int = 0
     sort: str = "PREFERENCE"
+    # Counts per risk bucket under the *current* filters (the bucket filter excluded, since
+    # it is the grouping dimension). The editor's bucket tabs use these so the numbers match
+    # the list; `risk_distribution` remains the whole-session distribution.
+    bucket_counts: dict[str, int] = Field(default_factory=dict)
 
 
 class RecommendationRunResponse(BaseModel):

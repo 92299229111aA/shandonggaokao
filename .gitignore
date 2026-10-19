@@ -27,6 +27,9 @@ next-env.d.ts
 data/raw/
 data/processed/
 *.log
+# Dev-server / uvicorn output. Redirected to .out as well as .log in places, so ignore
+# the directories outright rather than chasing suffixes.
+logs/
 
 # Database backups (pg_dump output, tens of MB, never source)
 backups/

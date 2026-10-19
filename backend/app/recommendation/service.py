@@ -6,7 +6,7 @@ import statistics
 from collections import Counter
 from typing import Any
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, case, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.admission.models import AdmissionCycle, AdmissionPlan, ExamYearStats, ProgramSeries
@@ -14,7 +14,12 @@ from app.admission.repository import PlanRepository
 from app.candidate.models import Profile
 from app.common.enums import EligibilityStatus
 from app.common.errors import NotFoundError
-from app.recommendation.models import RecommendationItem
+from app.recommendation.models import (
+    RecommendationItem,
+    Scheme,
+    SchemeItem,
+    SchemeVersion,
+)
 from app.recommendation.models import Session as RunSession
 from app.recommendation.pipeline import RecommendationPipeline
 from app.recommendation.pipeline_types import PipelineResult
@@ -175,6 +180,7 @@ class RecommendationService:
         is_985: bool | None = None,
         is_211: bool | None = None,
         is_double_first_class: bool | None = None,
+        exclude_scheme_id: int | None = None,
     ) -> RecommendationItemPage:
         """One page of candidates, filtered, ordered and sliced **by the database**.
 
@@ -185,35 +191,45 @@ class RecommendationService:
 
         `search` used to be applied after the slice, which meant a school sitting outside
         the first page could never be found. Both are fixed by letting SQL do the work.
+
+        `exclude_scheme_id` drops candidates already present in that scheme's current
+        version. The editor needs it: filtering the current page in the browser only works
+        while the whole pool fits in one page, and `total` / page numbers would be wrong.
         """
         if self.session.get(RunSession, session_id) is None:
             raise NotFoundError(f"推荐会话 {session_id} 不存在")
 
-        conditions = [RecommendationItem.session_id == session_id]
+        # `base_conditions` excludes the bucket filter: the bucket tabs need counts for
+        # every bucket, and constraining by bucket would make the others read zero.
+        base_conditions: list = [RecommendationItem.session_id == session_id]
         if only_pooled:
-            conditions.append(RecommendationItem.in_candidate_pool.is_(True))
-        if risk_bucket:
-            conditions.append(RecommendationItem.risk_bucket == risk_bucket)
+            base_conditions.append(RecommendationItem.in_candidate_pool.is_(True))
         if eligibility:
-            conditions.append(RecommendationItem.eligibility == eligibility)
+            base_conditions.append(RecommendationItem.eligibility == eligibility)
+        if exclude_scheme_id is not None:
+            base_conditions.append(self._not_in_scheme(exclude_scheme_id))
 
         if search and search.strip():
             needle = f"%{search.strip()}%"
-            conditions.append(
+            base_conditions.append(
                 or_(
                     AdmissionPlan.plan_name.ilike(needle),
                     University.name.ilike(needle),
                 )
             )
         if province_name:
-            conditions.append(University.province_name == province_name)
+            base_conditions.append(University.province_name == province_name)
         for flag, column in (
             (is_985, University.is_985),
             (is_211, University.is_211),
             (is_double_first_class, University.is_double_first_class),
         ):
             if flag is not None:
-                conditions.append(column.is_(flag))
+                base_conditions.append(column.is_(flag))
+
+        conditions = list(base_conditions)
+        if risk_bucket:
+            conditions.append(RecommendationItem.risk_bucket == risk_bucket)
 
         # The name filters need the joins, so they are always present rather than added
         # only when a filter is used — one query shape is easier to reason about than four.
@@ -230,14 +246,8 @@ class RecommendationService:
             ).scalar_one()
         )
 
-        stmt = (
-            with_joins(select(RecommendationItem))
-            .where(*conditions)
-            .order_by(*self._order_for(sort))
-            .limit(limit)
-            .offset(offset)
-        )
-        rows = list(self.session.execute(stmt).scalars())
+        rows = self._page_rows(sort=sort, conditions=conditions, with_joins=with_joins,
+                               limit=limit, offset=offset)
 
         # Only the current page needs its plan details and outcome history joined.
         details = self._plan_details([row.plan_id for row in rows])
@@ -249,7 +259,108 @@ class RecommendationService:
             risk_distribution=self._risk_distribution(session_id),
             pool_size=self._pool_size(session_id),
             sort=sort,
+            # Counts for the *current* filters, excluding the bucket filter itself (which
+            # is the grouping dimension). The editor shows these on its bucket tabs so the
+            # numbers match what the list will actually contain.
+            bucket_counts=self._bucket_counts(base_conditions, with_joins),
         )
+
+    def _page_rows(self, *, sort: str, conditions: list, with_joins, limit: int, offset: int):
+        """Fetch one page of items, honouring the interleaved sort when requested."""
+        if sort != ItemSort.RISK_MIX.value:
+            stmt = (
+                with_joins(select(RecommendationItem))
+                .where(*conditions)
+                .order_by(*self._order_for(sort))
+                .limit(limit)
+                .offset(offset)
+            )
+            return list(self.session.execute(stmt).scalars())
+
+        # Round-robin across buckets: number each bucket's rows, then order by that number
+        # so every bucket appears once per round. A plain ORDER BY cannot do this, hence
+        # the window function.
+        bucket_rank = case(
+            (RecommendationItem.risk_bucket == "HIGH_REACH", 0),
+            (RecommendationItem.risk_bucket == "REACH", 1),
+            (RecommendationItem.risk_bucket == "BORDER", 2),
+            (RecommendationItem.risk_bucket == "STABLE", 3),
+            (RecommendationItem.risk_bucket == "SAFE", 4),
+            else_=5,
+        )
+        inner = (
+            with_joins(
+                select(
+                    RecommendationItem.id.label("id"),
+                    func.row_number()
+                    .over(
+                        partition_by=RecommendationItem.risk_bucket,
+                        order_by=(
+                            RecommendationItem.preference_score.desc().nullslast(),
+                            RecommendationItem.acs.desc().nullslast(),
+                            RecommendationItem.id,
+                        ),
+                    )
+                    .label("round_no"),
+                    bucket_rank.label("bucket_rank"),
+                )
+            )
+            .where(*conditions)
+            .subquery()
+        )
+        ids = [
+            row[0]
+            for row in self.session.execute(
+                select(inner.c.id)
+                .order_by(inner.c.round_no, inner.c.bucket_rank, inner.c.id)
+                .limit(limit)
+                .offset(offset)
+            ).all()
+        ]
+        if not ids:
+            return []
+        rows = list(
+            self.session.execute(
+                select(RecommendationItem).where(RecommendationItem.id.in_(ids))
+            ).scalars()
+        )
+        # Preserve the interleaved order; `IN (...)` does not.
+        by_id = {row.id: row for row in rows}
+        return [by_id[item_id] for item_id in ids if item_id in by_id]
+
+    def _not_in_scheme(self, scheme_id: int):
+        """NOT EXISTS against the scheme's *current* version.
+
+        Tied to the current version rather than the scheme row so that editing the scheme
+        immediately changes what the pool offers, without any extra bookkeeping.
+        """
+        scheme = self.session.get(Scheme, scheme_id)
+        if scheme is None:
+            raise NotFoundError(f"志愿方案 {scheme_id} 不存在")
+        return ~exists(
+            select(1)
+            .select_from(SchemeItem)
+            .join(SchemeVersion, SchemeVersion.id == SchemeItem.scheme_version_id)
+            .where(
+                SchemeVersion.scheme_id == scheme_id,
+                SchemeVersion.version_no == scheme.current_version_no,
+                SchemeItem.recommendation_item_id == RecommendationItem.id,
+            )
+        )
+
+    def _bucket_counts(self, conditions: list, with_joins) -> dict[str, int]:
+        """Per-bucket counts under the current filters.
+
+        `conditions` deliberately excludes the bucket filter: the question is "how many
+        are there in each bucket", so constraining by bucket would make the others read
+        zero.
+        """
+        rows = self.session.execute(
+            with_joins(select(RecommendationItem.risk_bucket, func.count()))
+            .where(*conditions)
+            .group_by(RecommendationItem.risk_bucket)
+        ).all()
+        return {str(bucket): int(count) for bucket, count in rows if bucket is not None}
 
     @staticmethod
     def _order_for(sort: str) -> tuple:
@@ -257,6 +368,9 @@ class RecommendationService:
 
         `NULLS LAST` matters: an item with no ACS must not sort as if it scored zero, and
         `RecommendationItem.id` keeps paging deterministic when the primary key ties.
+
+        `RISK_MIX` is handled in the query, not here — it needs a window function, so it
+        cannot be expressed as a plain ORDER BY on the base columns.
         """
         if sort == ItemSort.ACS_DESC.value:
             return (RecommendationItem.acs.desc().nullslast(), RecommendationItem.id)
@@ -272,10 +386,15 @@ class RecommendationService:
                 RecommendationItem.id,
             )
         # Default: preference first, mirroring the two-step design (select by preference,
-        # then order by risk). Ties fall back to the safer choice.
+        # then order by risk).
+        #
+        # The tiebreaker is ACS **descending**, not ascending. `preference_score` collapses
+        # to a three-value 院校层次 mapping whenever the candidate set no 专业/地域/学校
+        # preferences, so the tiebreaker decides almost the entire order. Ascending put the
+        # hardest programmes first and made the pool look like it contained only 高冲.
         return (
             RecommendationItem.preference_score.desc().nullslast(),
-            RecommendationItem.acs.asc().nullslast(),
+            RecommendationItem.acs.desc().nullslast(),
             RecommendationItem.id,
         )
 

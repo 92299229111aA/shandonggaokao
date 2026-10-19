@@ -22,3 +22,8 @@ class ItemSort(StrEnum):
     ACS_ASC = "ACS_ASC"
     TUITION_ASC = "TUITION_ASC"
     PLAN_COUNT_DESC = "PLAN_COUNT_DESC"
+    # Round-robin across risk buckets, so the first page of a 19k-item pool contains a
+    # usable mixture instead of one bucket. Needed because `preference_score` collapses to
+    # a three-value 院校层次 mapping when no explicit preferences are set: ordering by it
+    # put the 500 hardest 985 programmes first and hid every other bucket.
+    RISK_MIX = "RISK_MIX"

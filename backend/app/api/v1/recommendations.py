@@ -77,6 +77,9 @@ def list_recommendation_items(
     is_985: Annotated[bool | None, Query(description="只看 985")] = None,
     is_211: Annotated[bool | None, Query(description="只看 211")] = None,
     is_double_first_class: Annotated[bool | None, Query(description="只看双一流")] = None,
+    exclude_scheme_id: Annotated[
+        int | None, Query(description="排除该方案当前版本已有的志愿（编辑器候选池用）")
+    ] = None,
 ):
     return RecommendationService(session).list_items(
         session_id=session_id,
@@ -91,4 +94,5 @@ def list_recommendation_items(
         is_985=is_985,
         is_211=is_211,
         is_double_first_class=is_double_first_class,
+        exclude_scheme_id=exclude_scheme_id,
     )

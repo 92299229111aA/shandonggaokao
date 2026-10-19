@@ -27,11 +27,64 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox, Input, Select } from "@/components/ui/input";
-import { recommendationApi, schemeApi } from "@/lib/api/endpoints";
+import { catalogApi, recommendationApi, schemeApi } from "@/lib/api/endpoints";
 import { errorMessage, isVersionConflict } from "@/lib/api/errors";
 import { useFlowState } from "@/lib/flow-state";
 import type { RecommendationItem, RiskMode, Scheme, SchemeItem } from "@/lib/api/types";
-import { ACS_DISCLAIMER } from "@/lib/utils";
+import { ACS_DISCLAIMER, RISK_LABELS, RISK_ORDER } from "@/lib/utils";
+
+/** Candidates per page in the pool. 50 matches the recommendations page. */
+const POOL_PAGE_SIZE = 50;
+
+/**
+ * Bucket tabs with counts.
+ *
+ * The counts come from `bucket_counts`, which the server computes under the current
+ * filters but *excluding* the bucket filter itself — otherwise selecting one bucket would
+ * zero the others. `available` is what makes them trustworthy: items already in the scheme
+ * are excluded server-side, so the number is what can actually be added.
+ */
+function BucketTabs({
+  value,
+  counts,
+  onChange,
+}: {
+  value: string;
+  counts: Record<string, number>;
+  onChange: (bucket: string) => void;
+}) {
+  // Derive the "全部" figure from the same counts rather than from `total`: `total` already
+  // has the bucket filter applied, so it would show the selected bucket's size here.
+  const all = RISK_ORDER.reduce((sum, bucket) => sum + (counts[bucket] ?? 0), 0);
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <button
+        type="button"
+        onClick={() => onChange("")}
+        className={`rounded-md border px-2 py-1 text-xs transition-colors ${
+          value === "" ? "border-primary bg-accent" : "border-input hover:bg-accent/60"
+        }`}
+      >
+        全部 <span className="tabular-nums opacity-70">{all}</span>
+      </button>
+      {RISK_ORDER.map((bucket) => {
+        const count = counts[bucket] ?? 0;
+        return (
+          <button
+            key={bucket}
+            type="button"
+            onClick={() => onChange(value === bucket ? "" : bucket)}
+            className={`rounded-md border px-2 py-1 text-xs transition-colors ${
+              value === bucket ? "border-primary bg-accent" : "border-input hover:bg-accent/60"
+            } ${count === 0 ? "opacity-40" : ""}`}
+          >
+            {RISK_LABELS[bucket]} <span className="tabular-nums opacity-70">{count}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function SchemeEditorPage() {
   const router = useRouter();
@@ -40,13 +93,36 @@ export default function SchemeEditorPage() {
 
   const [conflict, setConflict] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [poolFilter, setPoolFilter] = useState("");
-  const [schemeFilter, setSchemeFilter] = useState("");
   const [selectedPoolIds, setSelectedPoolIds] = useState<number[]>([]);
   const [riskMode, setRiskMode] = useState<RiskMode>("BALANCED");
   const [targetCount, setTargetCount] = useState<number | null>(null);
   const [minSafeCount, setMinSafeCount] = useState<string>("");
   const [localOrder, setLocalOrder] = useState<SchemeItem[] | null>(null);
+
+  // ---- candidate pool filters (server-side) ----
+  const [poolBucket, setPoolBucket] = useState("");
+  const [poolSearch, setPoolSearch] = useState("");
+  const [debouncedPoolSearch, setDebouncedPoolSearch] = useState("");
+  const [poolProvince, setPoolProvince] = useState("");
+  const [pool985, setPool985] = useState(false);
+  const [pool211, setPool211] = useState(false);
+  const [poolDfc, setPoolDfc] = useState(false);
+  const [poolPage, setPoolPage] = useState(0);
+
+  // ---- scheme panel filters (client-side: the scheme is at most a few dozen rows) ----
+  const [schemeBucket, setSchemeBucket] = useState("");
+  const [schemeSearch, setSchemeSearch] = useState("");
+  const [schemeOnlyUnlocked, setSchemeOnlyUnlocked] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedPoolSearch(poolSearch), 350);
+    return () => clearTimeout(timer);
+  }, [poolSearch]);
+
+  // Narrowing the pool must return to page 1, or the user lands on an empty page.
+  useEffect(() => {
+    setPoolPage(0);
+  }, [poolBucket, debouncedPoolSearch, poolProvince, pool985, pool211, poolDfc]);
 
   const scheme = useQuery({
     queryKey: ["scheme", state.schemeId],
@@ -55,9 +131,42 @@ export default function SchemeEditorPage() {
   });
 
   const pool = useQuery({
-    queryKey: ["recommendation-items", state.sessionId, "editor"],
-    queryFn: () => recommendationApi.items(state.sessionId!, { limit: 500 }),
-    enabled: loaded && Boolean(state.sessionId),
+    // `schemeVersionNo` is part of the key: adding or removing a candidate changes what
+    // the pool may offer, so the counts and pages must be refetched.
+    queryKey: [
+      "pool",
+      state.sessionId,
+      state.schemeId,
+      scheme.data?.current_version_no,
+      poolBucket,
+      debouncedPoolSearch,
+      poolProvince,
+      pool985,
+      pool211,
+      poolDfc,
+      poolPage,
+    ],
+    queryFn: () =>
+      recommendationApi.items(state.sessionId!, {
+        limit: POOL_PAGE_SIZE,
+        offset: poolPage * POOL_PAGE_SIZE,
+        // Round-robin across buckets: a plain sort always surfaces one bucket only.
+        sort: "RISK_MIX",
+        exclude_scheme_id: state.schemeId ?? undefined,
+        risk_bucket: poolBucket || undefined,
+        search: debouncedPoolSearch || undefined,
+        province_name: poolProvince || undefined,
+        is_985: pool985 || undefined,
+        is_211: pool211 || undefined,
+        is_double_first_class: poolDfc || undefined,
+      }),
+    enabled: loaded && Boolean(state.sessionId) && Boolean(state.schemeId),
+  });
+
+  const provinces = useQuery({
+    queryKey: ["preference-options"],
+    queryFn: () => catalogApi.preferenceOptions(),
+    enabled: loaded && Boolean(state.schemeId),
   });
 
   useEffect(() => {
@@ -72,6 +181,13 @@ export default function SchemeEditorPage() {
     () => localOrder ?? scheme.data?.items ?? [],
     [localOrder, scheme.data?.items],
   );
+
+  // Declared before the reorder callbacks because they must refuse to move rows while a
+  // filter is hiding part of the list. Drag indices come from the full list, so a drop
+  // would silently move items the user cannot see.
+  const schemeFilterCount =
+    (schemeBucket ? 1 : 0) + (schemeSearch.trim() ? 1 : 0) + (schemeOnlyUnlocked ? 1 : 0);
+  const schemeFiltered = schemeFilterCount > 0;
 
   const handleError = useCallback((error: unknown) => {
     if (isVersionConflict(error)) {
@@ -161,6 +277,10 @@ export default function SchemeEditorPage() {
     (event: DragEndEvent) => {
       const { active, over } = event;
       if (!over || active.id === over.id || !scheme.data) return;
+      // Guard as well as disabling the handle: drag indices are computed against the full
+      // list while only the filtered rows are visible, so a drop would move rows the user
+      // cannot see.
+      if (schemeFiltered) return;
       const oldIndex = items.findIndex((item) => item.recommendation_item_id === active.id);
       const newIndex = items.findIndex((item) => item.recommendation_item_id === over.id);
       if (oldIndex < 0 || newIndex < 0) return;
@@ -169,11 +289,12 @@ export default function SchemeEditorPage() {
       setLocalOrder(next);
       reorder.mutate({ order: next, summary: `拖拽调整：第 ${oldIndex + 1} 位移到第 ${newIndex + 1} 位` });
     },
-    [items, reorder, scheme.data],
+    [items, reorder, scheme.data, schemeFiltered],
   );
 
   const move = useCallback(
     (position: number, direction: -1 | 1) => {
+      if (schemeFiltered) return;
       const index = items.findIndex((item) => item.position === position);
       const target = index + direction;
       if (index < 0 || target < 0 || target >= items.length) return;
@@ -184,26 +305,38 @@ export default function SchemeEditorPage() {
         summary: `上/下移：第 ${position} 位调整到第 ${target + 1} 位`,
       });
     },
-    [items, reorder],
+    [items, reorder, schemeFiltered],
   );
 
-  const poolItems = useMemo(() => {
-    const inScheme = new Set(items.map((item) => item.recommendation_item_id));
-    return (pool.data?.items ?? []).filter((item) => {
-      if (inScheme.has(item.item_id)) return false;
-      if (!poolFilter) return true;
-      const needle = poolFilter.trim();
-      return item.plan_name.includes(needle) || item.university_name.includes(needle);
-    });
-  }, [items, pool.data?.items, poolFilter]);
+  // The server already excludes items that are in the scheme, so no client-side filter is
+  // needed here — and that matters once the pool is paged, because filtering the current
+  // page would leave `total` and the page numbers describing a different set.
+  const poolItems = pool.data?.items ?? [];
+  const poolTotal = pool.data?.total ?? 0;
+  const poolLastPage = Math.max(0, Math.ceil(poolTotal / POOL_PAGE_SIZE) - 1);
+  const poolRangeStart = poolTotal === 0 ? 0 : poolPage * POOL_PAGE_SIZE + 1;
+  const poolRangeEnd = poolPage * POOL_PAGE_SIZE + poolItems.length;
 
   const visibleSchemeItems = useMemo(() => {
-    if (!schemeFilter) return items;
-    const needle = schemeFilter.trim();
-    return items.filter(
-      (item) => item.plan_name.includes(needle) || item.university_name.includes(needle),
-    );
-  }, [items, schemeFilter]);
+    const needle = schemeSearch.trim();
+    return items.filter((item) => {
+      if (schemeBucket && item.risk_bucket !== schemeBucket) return false;
+      if (schemeOnlyUnlocked && item.locked) return false;
+      if (!needle) return true;
+      return item.plan_name.includes(needle) || item.university_name.includes(needle);
+    });
+  }, [items, schemeBucket, schemeSearch, schemeOnlyUnlocked]);
+
+  const schemeBucketCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const item of items) {
+      const bucket = item.risk_bucket ?? "";
+      if (bucket) counts[bucket] = (counts[bucket] ?? 0) + 1;
+    }
+    return counts;
+  }, [items]);
+
+  const atCapacity = items.length >= (scheme.data?.target_count ?? 96);
 
   if (loaded && !state.schemeId) {
     return (
@@ -329,21 +462,69 @@ export default function SchemeEditorPage() {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">候选池（{poolItems.length}）</CardTitle>
             <CardDescription className="text-xs">
-              资格不符的志愿不会出现在这里。勾选后可批量加入方案。
+              资格不符的志愿不会出现在这里。已在方案内的志愿也不再显示。
             </CardDescription>
-            <div className="flex gap-2 pt-2">
-              <Input
-                placeholder="筛选学校或专业"
-                value={poolFilter}
-                onChange={(event) => setPoolFilter(event.target.value)}
+
+            <div className="space-y-2 pt-2">
+              <BucketTabs
+                value={poolBucket}
+                counts={pool.data?.bucket_counts ?? {}}
+                onChange={setPoolBucket}
               />
-              <Button
-                size="sm"
-                disabled={!selectedPoolIds.length || addItems.isPending}
-                onClick={() => addItems.mutate(selectedPoolIds)}
-              >
-                加入({selectedPoolIds.length})
-              </Button>
+
+              <div className="flex gap-2">
+                <Input
+                  placeholder="搜索学校或专业（整个候选池）"
+                  value={poolSearch}
+                  onChange={(event) => setPoolSearch(event.target.value)}
+                />
+                <Button
+                  size="sm"
+                  disabled={!selectedPoolIds.length || addItems.isPending || atCapacity}
+                  title={atCapacity ? "方案已满，请先删除或调高目标数量" : undefined}
+                  onClick={() => addItems.mutate(selectedPoolIds)}
+                >
+                  加入({selectedPoolIds.length})
+                </Button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  className="w-36"
+                  value={poolProvince}
+                  onChange={(event) => setPoolProvince(event.target.value)}
+                >
+                  <option value="">全部省份</option>
+                  {(provinces.data?.provinces ?? []).map((province) => (
+                    <option key={province.code} value={province.name}>
+                      {province.name}（{province.university_count}）
+                    </option>
+                  ))}
+                </Select>
+                {(
+                  [
+                    [pool985, setPool985, "985"],
+                    [pool211, setPool211, "211"],
+                    [poolDfc, setPoolDfc, "双一流"],
+                  ] as const
+                ).map(([checked, setter, label]) => (
+                  <label key={label} className="flex items-center gap-1.5 text-xs">
+                    <Checkbox
+                      checked={checked}
+                      onChange={(event) => setter(event.target.checked)}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+
+              <p className="text-xs tabular-nums text-muted-foreground">
+                {pool.isPending
+                  ? "正在读取候选池…"
+                  : poolTotal === 0
+                    ? "当前筛选下没有可加入的志愿"
+                    : `可加入 ${poolTotal.toLocaleString()} 条，当前显示第 ${poolRangeStart}–${poolRangeEnd} 条`}
+              </p>
             </div>
           </CardHeader>
           <CardContent className="flex-1 space-y-2 overflow-auto">
@@ -352,6 +533,7 @@ export default function SchemeEditorPage() {
                 key={item.item_id}
                 item={item}
                 checked={selectedPoolIds.includes(item.item_id)}
+                disabled={atCapacity}
                 onToggle={() =>
                   setSelectedPoolIds((previous) =>
                     previous.includes(item.item_id)
@@ -363,9 +545,35 @@ export default function SchemeEditorPage() {
             ))}
             {poolItems.length === 0 ? (
               <p className="py-6 text-center text-xs text-muted-foreground">
-                候选池中没有可加入的志愿。
+                {pool.isPending ? "正在读取候选池…" : "候选池中没有可加入的志愿。请放宽筛选条件。"}
               </p>
             ) : null}
+          </CardContent>
+          <CardContent className="flex items-center justify-between border-t py-2">
+            <span className="text-xs text-muted-foreground">
+              {atCapacity ? "方案已满 96 条，加入前请先删除或调高目标数量" : ""}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={poolPage === 0}
+                onClick={() => setPoolPage((current) => Math.max(0, current - 1))}
+              >
+                上一页
+              </Button>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {poolPage + 1} / {poolLastPage + 1}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={poolPage >= poolLastPage}
+                onClick={() => setPoolPage((current) => Math.min(poolLastPage, current + 1))}
+              >
+                下一页
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -377,18 +585,51 @@ export default function SchemeEditorPage() {
             <CardDescription className="text-xs">
               顺序即填报顺序：越想去越靠前。同一次愿层内更难的志愿建议放前面。
             </CardDescription>
-            <div className="pt-2">
+            <div className="space-y-2 pt-2">
               <Input
-                placeholder="筛选方案内志愿"
-                value={schemeFilter}
-                onChange={(event) => setSchemeFilter(event.target.value)}
+                placeholder="搜索方案内志愿"
+                value={schemeSearch}
+                onChange={(event) => setSchemeSearch(event.target.value)}
               />
+              <BucketTabs
+                value={schemeBucket}
+                counts={schemeBucketCounts}
+                onChange={setSchemeBucket}
+              />
+              <label className="flex items-center gap-1.5 text-xs">
+                <Checkbox
+                  checked={schemeOnlyUnlocked}
+                  onChange={(event) => setSchemeOnlyUnlocked(event.target.checked)}
+                />
+                只看未锁定
+              </label>
+              {schemeFiltered ? (
+                <p className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900">
+                  筛选生效时不能调整顺序（拖拽与上下移已禁用），
+                  请清除筛选后再排序，否则隐藏的志愿会一起位移。
+                  <button
+                    type="button"
+                    className="ml-1 underline"
+                    onClick={() => {
+                      setSchemeBucket("");
+                      setSchemeSearch("");
+                      setSchemeOnlyUnlocked(false);
+                    }}
+                  >
+                    清除筛选
+                  </button>
+                </p>
+              ) : null}
             </div>
           </CardHeader>
           <CardContent className="flex-1 overflow-auto">
             {items.length === 0 ? (
               <p className="py-6 text-center text-xs text-muted-foreground">
                 方案为空。请从左侧候选池加入志愿，或点击“重新优化”。
+              </p>
+            ) : visibleSchemeItems.length === 0 ? (
+              <p className="py-6 text-center text-xs text-muted-foreground">
+                没有符合筛选条件的志愿。
               </p>
             ) : (
               <DndContext
@@ -411,6 +652,7 @@ export default function SchemeEditorPage() {
                         )}
                         total={items.length}
                         disabled={reorder.isPending || toggleLock.isPending || removeItem.isPending}
+                        reorderDisabled={schemeFiltered}
                         onMoveUp={() => move(item.position, -1)}
                         onMoveDown={() => move(item.position, 1)}
                         onToggleLock={() => toggleLock.mutate({ position: item.position, locked: !item.locked })}
@@ -433,15 +675,27 @@ export default function SchemeEditorPage() {
 function PoolRow({
   item,
   checked,
+  disabled = false,
   onToggle,
 }: {
   item: RecommendationItem;
   checked: boolean;
+  /** True when the scheme is full: selecting would only fail on submit. */
+  disabled?: boolean;
   onToggle: () => void;
 }) {
   return (
-    <label className="flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors hover:bg-accent/50">
-      <Checkbox checked={checked} onChange={onToggle} className="mt-1" />
+    <label
+      className={`flex items-start gap-3 rounded-md border p-3 transition-colors ${
+        disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-accent/50"
+      }`}
+    >
+      <Checkbox
+        checked={checked}
+        onChange={onToggle}
+        disabled={disabled}
+        className="mt-1"
+      />
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
@@ -470,6 +724,7 @@ function SchemeRow({
   index,
   total,
   disabled,
+  reorderDisabled = false,
   onMoveUp,
   onMoveDown,
   onToggleLock,
@@ -479,6 +734,8 @@ function SchemeRow({
   index: number;
   total: number;
   disabled: boolean;
+  /** True while a filter hides rows: reordering would move unseen items. */
+  reorderDisabled?: boolean;
   onMoveUp: () => void;
   onMoveDown: () => void;
   onToggleLock: () => void;
@@ -486,6 +743,7 @@ function SchemeRow({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.recommendation_item_id,
+    disabled: reorderDisabled,
   });
 
   return (
@@ -499,8 +757,16 @@ function SchemeRow({
           type="button"
           {...attributes}
           {...listeners}
-          className="mt-1 cursor-grab touch-none select-none rounded px-1 text-muted-foreground hover:bg-accent"
-          aria-label={`拖动第 ${item.position} 个志愿`}
+          disabled={reorderDisabled}
+          className={`mt-1 select-none rounded px-1 text-muted-foreground ${
+            reorderDisabled ? "cursor-not-allowed opacity-30" : "cursor-grab touch-none hover:bg-accent"
+          }`}
+          aria-label={
+            reorderDisabled
+              ? "筛选生效时不能拖动排序"
+              : `拖动第 ${item.position} 个志愿`
+          }
+          title={reorderDisabled ? "筛选生效时不能拖动排序" : undefined}
         >
           ⠿
         </button>
@@ -531,13 +797,19 @@ function SchemeRow({
 
         <div className="flex shrink-0 flex-col items-end gap-1">
           <div className="flex gap-1">
-            <Button size="icon" variant="ghost" disabled={disabled || index === 0} onClick={onMoveUp} aria-label="上移">
+            <Button
+              size="icon"
+              variant="ghost"
+              disabled={disabled || reorderDisabled || index === 0}
+              onClick={onMoveUp}
+              aria-label="上移"
+            >
               ↑
             </Button>
             <Button
               size="icon"
               variant="ghost"
-              disabled={disabled || index === total - 1}
+              disabled={disabled || reorderDisabled || index === total - 1}
               onClick={onMoveDown}
               aria-label="下移"
             >

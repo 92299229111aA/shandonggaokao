@@ -94,6 +94,8 @@ export const recommendationApi = {
       is_985?: boolean;
       is_211?: boolean;
       is_double_first_class?: boolean;
+      /** 排除该方案当前版本已有的志愿（编辑器候选池用）。 */
+      exclude_scheme_id?: number;
     } = {},
   ) => apiFetch<RecommendationItemPage>(`/recommendations/${sessionId}/items${buildQuery(params)}`),
   item: (itemId: number) => apiFetch<RecommendationItem>(`/recommendations/items/${itemId}`),
