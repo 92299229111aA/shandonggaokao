@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import statistics
 from collections import Counter
+from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import Select, case, exists, func, or_, select
@@ -29,6 +30,8 @@ from app.recommendation.schemas import (
     RecommendationItemPage,
     RecommendationRunResponse,
     SessionDTO,
+    UniversityGroupDTO,
+    UniversityGroupPage,
 )
 from app.recommendation.sorts import ItemSort
 from app.reference.models import University
@@ -165,6 +168,74 @@ class RecommendationService:
             raise NotFoundError(f"推荐会话 {session_id} 不存在")
         return SessionDTO.model_validate(run)
 
+    def _build_filters(
+        self,
+        *,
+        session_id: int,
+        only_pooled: bool = True,
+        eligibility: str | None = None,
+        search: str | None = None,
+        province_name: str | None = None,
+        is_985: bool | None = None,
+        is_211: bool | None = None,
+        is_double_first_class: bool | None = None,
+        university_id: int | None = None,
+        exclude_scheme_id: int | None = None,
+        require_joins: bool = False,
+    ) -> tuple[list, Callable[[Select], Select]]:
+        """Shared WHERE clauses + join helper for the item list and the school grouping.
+
+        Returned as a pair so both queries apply *identical* filters — the grouped view and
+        the flat list must agree on what is in scope, otherwise the school counts would not
+        match the rows behind them.
+
+        The three joins cost real time over ~19k rows, so they are only added when a filter
+        actually references `University` / `AdmissionPlan`. `require_joins` lets the caller
+        force them for a sort that needs plan columns.
+        """
+        conditions: list = [RecommendationItem.session_id == session_id]
+        needs_join = require_joins
+        if only_pooled:
+            conditions.append(RecommendationItem.in_candidate_pool.is_(True))
+        if eligibility:
+            conditions.append(RecommendationItem.eligibility == eligibility)
+        if exclude_scheme_id is not None:
+            conditions.append(self._not_in_scheme(exclude_scheme_id))
+        if university_id is not None:
+            conditions.append(University.id == university_id)
+            needs_join = True
+        if search and search.strip():
+            needle = f"%{search.strip()}%"
+            conditions.append(
+                or_(
+                    AdmissionPlan.plan_name.ilike(needle),
+                    University.name.ilike(needle),
+                )
+            )
+            needs_join = True
+        if province_name:
+            conditions.append(University.province_name == province_name)
+            needs_join = True
+        for flag, column in (
+            (is_985, University.is_985),
+            (is_211, University.is_211),
+            (is_double_first_class, University.is_double_first_class),
+        ):
+            if flag is not None:
+                conditions.append(column.is_(flag))
+                needs_join = True
+
+        def with_joins(stmt: Select) -> Select:
+            if not needs_join:
+                return stmt
+            return (
+                stmt.join(AdmissionPlan, AdmissionPlan.id == RecommendationItem.plan_id)
+                .join(ProgramSeries, ProgramSeries.id == AdmissionPlan.series_id)
+                .join(University, University.id == ProgramSeries.university_id)
+            )
+
+        return conditions, with_joins
+
     def list_items(
         self,
         *,
@@ -180,6 +251,7 @@ class RecommendationService:
         is_985: bool | None = None,
         is_211: bool | None = None,
         is_double_first_class: bool | None = None,
+        university_id: int | None = None,
         exclude_scheme_id: int | None = None,
     ) -> RecommendationItemPage:
         """One page of candidates, filtered, ordered and sliced **by the database**.
@@ -195,74 +267,160 @@ class RecommendationService:
         `exclude_scheme_id` drops candidates already present in that scheme's current
         version. The editor needs it: filtering the current page in the browser only works
         while the whole pool fits in one page, and `total` / page numbers would be wrong.
+
+        `university_id` narrows to one school, which is how the grouped pool expands a row.
         """
         if self.session.get(RunSession, session_id) is None:
             raise NotFoundError(f"推荐会话 {session_id} 不存在")
 
         # `base_conditions` excludes the bucket filter: the bucket tabs need counts for
         # every bucket, and constraining by bucket would make the others read zero.
-        base_conditions: list = [RecommendationItem.session_id == session_id]
-        if only_pooled:
-            base_conditions.append(RecommendationItem.in_candidate_pool.is_(True))
-        if eligibility:
-            base_conditions.append(RecommendationItem.eligibility == eligibility)
-        if exclude_scheme_id is not None:
-            base_conditions.append(self._not_in_scheme(exclude_scheme_id))
-
-        if search and search.strip():
-            needle = f"%{search.strip()}%"
-            base_conditions.append(
-                or_(
-                    AdmissionPlan.plan_name.ilike(needle),
-                    University.name.ilike(needle),
-                )
-            )
-        if province_name:
-            base_conditions.append(University.province_name == province_name)
-        for flag, column in (
-            (is_985, University.is_985),
-            (is_211, University.is_211),
-            (is_double_first_class, University.is_double_first_class),
-        ):
-            if flag is not None:
-                base_conditions.append(column.is_(flag))
+        base_conditions, with_joins = self._build_filters(
+            session_id=session_id,
+            only_pooled=only_pooled,
+            eligibility=eligibility,
+            search=search,
+            province_name=province_name,
+            is_985=is_985,
+            is_211=is_211,
+            is_double_first_class=is_double_first_class,
+            university_id=university_id,
+            exclude_scheme_id=exclude_scheme_id,
+            # These sort keys read plan columns, so the joins cannot be skipped.
+            require_joins=sort in (ItemSort.TUITION_ASC.value, ItemSort.PLAN_COUNT_DESC.value),
+        )
 
         conditions = list(base_conditions)
         if risk_bucket:
             conditions.append(RecommendationItem.risk_bucket == risk_bucket)
 
-        # The name filters need the joins, so they are always present rather than added
-        # only when a filter is used — one query shape is easier to reason about than four.
-        def with_joins(stmt: Select) -> Select:
-            return (
-                stmt.join(AdmissionPlan, AdmissionPlan.id == RecommendationItem.plan_id)
-                .join(ProgramSeries, ProgramSeries.id == AdmissionPlan.series_id)
-                .join(University, University.id == ProgramSeries.university_id)
-            )
-
-        total = int(
-            self.session.execute(
-                with_joins(select(func.count()).select_from(RecommendationItem)).where(*conditions)
-            ).scalar_one()
-        )
+        # One grouped scan serves both the page total and the bucket tabs. Counting
+        # separately made two passes over the same 19k joined rows (~600 ms each).
+        bucket_counts, base_total = self._bucket_counts(base_conditions, with_joins)
+        total = bucket_counts.get(risk_bucket, 0) if risk_bucket else base_total
 
         rows = self._page_rows(sort=sort, conditions=conditions, with_joins=with_joins,
                                limit=limit, offset=offset)
 
         # Only the current page needs its plan details and outcome history joined.
         details = self._plan_details([row.plan_id for row in rows])
+        # Whole-session distribution, computed once: `_pool_size` is just its sum, and
+        # calling it separately ran the identical group-by twice per request.
+        session_distribution = self._risk_distribution(session_id)
         return RecommendationItemPage(
             items=[self._to_dto(row, details.get(row.plan_id, {})) for row in rows],
             total=total,
             limit=limit,
             offset=offset,
-            risk_distribution=self._risk_distribution(session_id),
-            pool_size=self._pool_size(session_id),
+            risk_distribution=session_distribution,
+            pool_size=sum(session_distribution.values()),
             sort=sort,
             # Counts for the *current* filters, excluding the bucket filter itself (which
             # is the grouping dimension). The editor shows these on its bucket tabs so the
             # numbers match what the list will actually contain.
-            bucket_counts=self._bucket_counts(base_conditions, with_joins),
+            bucket_counts=bucket_counts,
+        )
+
+    def list_university_groups(
+        self,
+        *,
+        session_id: int,
+        limit: int,
+        offset: int,
+        risk_bucket: str | None = None,
+        eligibility: str | None = None,
+        only_pooled: bool = True,
+        search: str | None = None,
+        sort: str = "ITEM_COUNT_DESC",
+        province_name: str | None = None,
+        is_985: bool | None = None,
+        is_211: bool | None = None,
+        is_double_first_class: bool | None = None,
+        exclude_scheme_id: int | None = None,
+    ) -> UniversityGroupPage:
+        """Candidates grouped by university, for the editor's "按学校" view.
+
+        Grouped server-side on purpose: a session spans ~1,100 schools over ~19,000 rows,
+        so one school's rows land on several pages and a client-side group would only ever
+        describe the current page. Same filters as `list_items`, via `_build_filters`, so
+        the counts agree with the flat list.
+        """
+        if self.session.get(RunSession, session_id) is None:
+            raise NotFoundError(f"推荐会话 {session_id} 不存在")
+
+        conditions, with_joins = self._build_filters(
+            session_id=session_id,
+            only_pooled=only_pooled,
+            eligibility=eligibility,
+            search=search,
+            province_name=province_name,
+            is_985=is_985,
+            is_211=is_211,
+            is_double_first_class=is_double_first_class,
+            exclude_scheme_id=exclude_scheme_id,
+            # Mandatory here: the grouped query selects University columns, and without the
+            # explicit join SQLAlchemy infers FROM from those references — producing a
+            # cartesian product that silently returns every university instead of an error.
+            require_joins=True,
+        )
+        if risk_bucket:
+            conditions.append(RecommendationItem.risk_bucket == risk_bucket)
+
+        grouped = (
+            with_joins(
+                select(
+                    University.id.label("university_id"),
+                    University.name.label("university_name"),
+                    University.province_name,
+                    University.city_name,
+                    University.is_985,
+                    University.is_211,
+                    University.is_double_first_class,
+                    func.count().label("item_count"),
+                    func.max(RecommendationItem.acs).label("max_acs"),
+                    func.min(RecommendationItem.acs).label("min_acs"),
+                    func.max(RecommendationItem.preference_score).label("max_preference_score"),
+                )
+            )
+            .where(*conditions)
+            .group_by(
+                University.id,
+                University.name,
+                University.province_name,
+                University.city_name,
+                University.is_985,
+                University.is_211,
+                University.is_double_first_class,
+            )
+            .subquery()
+        )
+
+        total = int(
+            self.session.execute(
+                with_joins(
+                    select(func.count(func.distinct(University.id))).select_from(RecommendationItem)
+                ).where(*conditions)
+            ).scalar_one()
+        )
+
+        order: tuple = ()
+        if sort == "ACS_DESC":
+            order = (grouped.c.max_acs.desc().nullslast(), grouped.c.item_count.desc())
+        elif sort == "NAME":
+            order = (grouped.c.university_name, grouped.c.university_id)
+        else:
+            order = (grouped.c.item_count.desc(), grouped.c.max_acs.desc().nullslast())
+
+        rows = self.session.execute(
+            select(grouped).order_by(*order).limit(limit).offset(offset)
+        ).mappings()
+
+        return UniversityGroupPage(
+            items=[UniversityGroupDTO(**dict(row)) for row in rows],
+            total=total,
+            limit=limit,
+            offset=offset,
+            sort=sort,
         )
 
     def _page_rows(self, *, sort: str, conditions: list, with_joins, limit: int, offset: int):
@@ -348,19 +506,24 @@ class RecommendationService:
             )
         )
 
-    def _bucket_counts(self, conditions: list, with_joins) -> dict[str, int]:
-        """Per-bucket counts under the current filters.
+    def _bucket_counts(self, conditions: list, with_joins) -> tuple[dict[str, int], int]:
+        """Per-bucket counts under the current filters, plus the unfiltered-by-bucket total.
 
         `conditions` deliberately excludes the bucket filter: the question is "how many
         are there in each bucket", so constraining by bucket would make the others read
         zero.
+
+        Returning the total alongside is not just convenience — it replaces a second
+        full scan of the same rows. The count includes rows whose `risk_bucket` is NULL so
+        the total can never be smaller than the sum of the buckets.
         """
         rows = self.session.execute(
             with_joins(select(RecommendationItem.risk_bucket, func.count()))
             .where(*conditions)
             .group_by(RecommendationItem.risk_bucket)
         ).all()
-        return {str(bucket): int(count) for bucket, count in rows if bucket is not None}
+        counts = {str(bucket): int(count) for bucket, count in rows if bucket is not None}
+        return counts, sum(int(count) for _bucket, count in rows)
 
     @staticmethod
     def _order_for(sort: str) -> tuple:
@@ -417,9 +580,6 @@ class RecommendationService:
             .group_by(RecommendationItem.risk_bucket)
         ).all()
         return {str(bucket): int(count) for bucket, count in rows if bucket is not None}
-
-    def _pool_size(self, session_id: int) -> int:
-        return sum(self._risk_distribution(session_id).values())
 
     def _plan_details(self, plan_ids: list[int]) -> dict[int, dict[str, Any]]:
         if not plan_ids:

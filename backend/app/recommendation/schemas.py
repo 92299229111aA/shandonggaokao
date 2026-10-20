@@ -116,6 +116,38 @@ class RecommendationItemPage(BaseModel):
     bucket_counts: dict[str, int] = Field(default_factory=dict)
 
 
+class UniversityGroupDTO(BaseModel):
+    """One university in the "group by school" view of the candidate pool.
+
+    A session holds ~19,000 school×major rows over ~1,100 universities, so a flat list
+    repeats the same school dozens of times. Grouping has to be done by the server: with
+    pagination the rows for one school land on different pages, so a client-side group
+    would only ever describe the current page.
+    """
+
+    university_id: int
+    university_name: str
+    province_name: str | None = None
+    city_name: str | None = None
+    is_985: bool = False
+    is_211: bool = False
+    is_double_first_class: bool = False
+    # How many candidates this school contributes under the current filters.
+    item_count: int = 0
+    # Best (safest) and worst ACS among those candidates, so a school's range is visible.
+    max_acs: float | None = None
+    min_acs: float | None = None
+    max_preference_score: float | None = None
+
+
+class UniversityGroupPage(BaseModel):
+    items: list[UniversityGroupDTO] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
+    sort: str = "ITEM_COUNT_DESC"
+
+
 class RecommendationRunResponse(BaseModel):
     """Returned by POST /recommendations."""
 

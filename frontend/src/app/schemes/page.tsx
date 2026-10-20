@@ -30,7 +30,13 @@ import { Checkbox, Input, Select } from "@/components/ui/input";
 import { catalogApi, recommendationApi, schemeApi } from "@/lib/api/endpoints";
 import { errorMessage, isVersionConflict } from "@/lib/api/errors";
 import { useFlowState } from "@/lib/flow-state";
-import type { RecommendationItem, RiskMode, Scheme, SchemeItem } from "@/lib/api/types";
+import type {
+  RecommendationItem,
+  RiskMode,
+  Scheme,
+  SchemeItem,
+  UniversityGroup,
+} from "@/lib/api/types";
 import { ACS_DISCLAIMER, RISK_LABELS, RISK_ORDER } from "@/lib/utils";
 
 /** Candidates per page in the pool. 50 matches the recommendations page. */
@@ -108,10 +114,15 @@ export default function SchemeEditorPage() {
   const [pool211, setPool211] = useState(false);
   const [poolDfc, setPoolDfc] = useState(false);
   const [poolPage, setPoolPage] = useState(0);
+  // "list" = one row per school×major; "school" = one row per university, expandable.
+  const [poolView, setPoolView] = useState<"list" | "school">("list");
+  const [expandedUniversity, setExpandedUniversity] = useState<number | null>(null);
 
   // ---- scheme panel filters (client-side: the scheme is at most a few dozen rows) ----
   const [schemeBucket, setSchemeBucket] = useState("");
   const [schemeSearch, setSchemeSearch] = useState("");
+  const [schemeProvince, setSchemeProvince] = useState("");
+  const [schemeUniversity, setSchemeUniversity] = useState("");
   const [schemeOnlyUnlocked, setSchemeOnlyUnlocked] = useState(false);
 
   useEffect(() => {
@@ -122,6 +133,11 @@ export default function SchemeEditorPage() {
   // Narrowing the pool must return to page 1, or the user lands on an empty page.
   useEffect(() => {
     setPoolPage(0);
+  }, [poolBucket, debouncedPoolSearch, poolProvince, pool985, pool211, poolDfc, poolView]);
+
+  // A collapsed row must not stay "expanded" once the filters change under it.
+  useEffect(() => {
+    setExpandedUniversity(null);
   }, [poolBucket, debouncedPoolSearch, poolProvince, pool985, pool211, poolDfc]);
 
   const scheme = useQuery({
@@ -169,6 +185,69 @@ export default function SchemeEditorPage() {
     enabled: loaded && Boolean(state.schemeId),
   });
 
+  // Grouped view. Disabled while the flat view is active so switching back and forth does
+  // not refetch a page nobody is looking at.
+  const groups = useQuery({
+    queryKey: [
+      "pool-groups",
+      state.sessionId,
+      state.schemeId,
+      scheme.data?.current_version_no,
+      poolBucket,
+      debouncedPoolSearch,
+      poolProvince,
+      pool985,
+      pool211,
+      poolDfc,
+      poolPage,
+    ],
+    queryFn: () =>
+      recommendationApi.universityGroups(state.sessionId!, {
+        limit: POOL_PAGE_SIZE,
+        offset: poolPage * POOL_PAGE_SIZE,
+        exclude_scheme_id: state.schemeId ?? undefined,
+        risk_bucket: poolBucket || undefined,
+        search: debouncedPoolSearch || undefined,
+        province_name: poolProvince || undefined,
+        is_985: pool985 || undefined,
+        is_211: pool211 || undefined,
+        is_double_first_class: poolDfc || undefined,
+      }),
+    enabled:
+      loaded && Boolean(state.sessionId) && Boolean(state.schemeId) && poolView === "school",
+  });
+
+  // Majors of the expanded school. Same filters as the pool, narrowed to one university.
+  const expandedItems = useQuery({
+    queryKey: [
+      "pool-expanded",
+      state.sessionId,
+      state.schemeId,
+      scheme.data?.current_version_no,
+      expandedUniversity,
+      poolBucket,
+      debouncedPoolSearch,
+      poolProvince,
+      pool985,
+      pool211,
+      poolDfc,
+    ],
+    queryFn: () =>
+      recommendationApi.items(state.sessionId!, {
+        limit: 200,
+        university_id: expandedUniversity!,
+        sort: "RISK_MIX",
+        exclude_scheme_id: state.schemeId ?? undefined,
+        risk_bucket: poolBucket || undefined,
+        search: debouncedPoolSearch || undefined,
+        province_name: poolProvince || undefined,
+        is_985: pool985 || undefined,
+        is_211: pool211 || undefined,
+        is_double_first_class: poolDfc || undefined,
+      }),
+    enabled: loaded && Boolean(state.sessionId) && expandedUniversity !== null,
+  });
+
   useEffect(() => {
     if (scheme.data) {
       setLocalOrder(scheme.data.items);
@@ -186,7 +265,11 @@ export default function SchemeEditorPage() {
   // filter is hiding part of the list. Drag indices come from the full list, so a drop
   // would silently move items the user cannot see.
   const schemeFilterCount =
-    (schemeBucket ? 1 : 0) + (schemeSearch.trim() ? 1 : 0) + (schemeOnlyUnlocked ? 1 : 0);
+    (schemeBucket ? 1 : 0) +
+    (schemeProvince ? 1 : 0) +
+    (schemeUniversity ? 1 : 0) +
+    (schemeSearch.trim() ? 1 : 0) +
+    (schemeOnlyUnlocked ? 1 : 0);
   const schemeFiltered = schemeFilterCount > 0;
 
   const handleError = useCallback((error: unknown) => {
@@ -312,20 +395,35 @@ export default function SchemeEditorPage() {
   // needed here — and that matters once the pool is paged, because filtering the current
   // page would leave `total` and the page numbers describing a different set.
   const poolItems = pool.data?.items ?? [];
-  const poolTotal = pool.data?.total ?? 0;
+  const groupItems = groups.data?.items ?? [];
+  // Paging counts whichever list is on screen: items in list view, universities in school
+  // view. Using the item total for both would show far too many pages in school view.
+  const poolTotal = poolView === "school" ? (groups.data?.total ?? 0) : (pool.data?.total ?? 0);
+  const poolShown = poolView === "school" ? groupItems.length : poolItems.length;
   const poolLastPage = Math.max(0, Math.ceil(poolTotal / POOL_PAGE_SIZE) - 1);
   const poolRangeStart = poolTotal === 0 ? 0 : poolPage * POOL_PAGE_SIZE + 1;
-  const poolRangeEnd = poolPage * POOL_PAGE_SIZE + poolItems.length;
+  const poolRangeEnd = poolPage * POOL_PAGE_SIZE + poolShown;
+  const poolLoading = poolView === "school" ? groups.isPending : pool.isPending;
+  const poolUnit = poolView === "school" ? "所院校" : "条";
 
   const visibleSchemeItems = useMemo(() => {
     const needle = schemeSearch.trim();
     return items.filter((item) => {
       if (schemeBucket && item.risk_bucket !== schemeBucket) return false;
+      if (schemeProvince && item.province_name !== schemeProvince) return false;
+      if (schemeUniversity && item.university_name !== schemeUniversity) return false;
       if (schemeOnlyUnlocked && item.locked) return false;
       if (!needle) return true;
       return item.plan_name.includes(needle) || item.university_name.includes(needle);
     });
-  }, [items, schemeBucket, schemeSearch, schemeOnlyUnlocked]);
+  }, [
+    items,
+    schemeBucket,
+    schemeProvince,
+    schemeUniversity,
+    schemeSearch,
+    schemeOnlyUnlocked,
+  ]);
 
   const schemeBucketCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -335,6 +433,28 @@ export default function SchemeEditorPage() {
     }
     return counts;
   }, [items]);
+
+  // Provinces and schools present in the scheme, with counts. The scheme holds at most a
+  // few dozen rows, so a plain select is clearer than another search box.
+  const schemeProvinceOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      if (!item.province_name) continue;
+      counts.set(item.province_name, (counts.get(item.province_name) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [items]);
+
+  const schemeUniversityOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      if (!item.university_name) continue;
+      // Respect the province filter so the school list cannot offer an impossible choice.
+      if (schemeProvince && item.province_name !== schemeProvince) continue;
+      counts.set(item.university_name, (counts.get(item.university_name) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [items, schemeProvince]);
 
   const atCapacity = items.length >= (scheme.data?.target_count ?? 96);
 
@@ -519,31 +639,90 @@ export default function SchemeEditorPage() {
               </div>
 
               <p className="text-xs tabular-nums text-muted-foreground">
-                {pool.isPending
+                {poolLoading
                   ? "正在读取候选池…"
                   : poolTotal === 0
                     ? "当前筛选下没有可加入的志愿"
-                    : `可加入 ${poolTotal.toLocaleString()} 条，当前显示第 ${poolRangeStart}–${poolRangeEnd} 条`}
+                    : `可加入 ${poolTotal.toLocaleString()} ${poolUnit}，当前显示第 ${poolRangeStart}–${poolRangeEnd} 条`}
               </p>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground">视图</span>
+                {(
+                  [
+                    ["list", "列表"],
+                    ["school", "按学校"],
+                  ] as const
+                ).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setPoolView(mode)}
+                    className={`rounded-md border px-2 py-1 text-xs transition-colors ${
+                      poolView === mode
+                        ? "border-primary bg-accent"
+                        : "border-input hover:bg-accent/60"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+                {poolView === "school" ? (
+                  <span className="text-xs text-muted-foreground">
+                    （一校一行，点开看该校专业）
+                  </span>
+                ) : null}
+              </div>
             </div>
           </CardHeader>
           <CardContent className="flex-1 space-y-2 overflow-auto">
-            {poolItems.map((item) => (
-              <PoolRow
-                key={item.item_id}
-                item={item}
-                checked={selectedPoolIds.includes(item.item_id)}
-                disabled={atCapacity}
-                onToggle={() =>
-                  setSelectedPoolIds((previous) =>
-                    previous.includes(item.item_id)
-                      ? previous.filter((id) => id !== item.item_id)
-                      : [...previous, item.item_id],
-                  )
-                }
-              />
-            ))}
-            {poolItems.length === 0 ? (
+            {poolView === "list"
+              ? poolItems.map((item) => (
+                  <PoolRow
+                    key={item.item_id}
+                    item={item}
+                    checked={selectedPoolIds.includes(item.item_id)}
+                    disabled={atCapacity}
+                    onToggle={() =>
+                      setSelectedPoolIds((previous) =>
+                        previous.includes(item.item_id)
+                          ? previous.filter((id) => id !== item.item_id)
+                          : [...previous, item.item_id],
+                      )
+                    }
+                  />
+                ))
+              : (groups.data?.items ?? []).map((group) => (
+                  <SchoolGroupRow
+                    key={group.university_id}
+                    group={group}
+                    expanded={expandedUniversity === group.university_id}
+                    onToggle={() =>
+                      setExpandedUniversity((current) =>
+                        current === group.university_id ? null : group.university_id,
+                      )
+                    }
+                    majors={expandedItems.data?.items ?? []}
+                    majorsLoading={
+                      expandedUniversity === group.university_id && expandedItems.isPending
+                    }
+                    selectedIds={selectedPoolIds}
+                    disabled={atCapacity}
+                    onToggleMajor={(itemId) =>
+                      setSelectedPoolIds((previous) =>
+                        previous.includes(itemId)
+                          ? previous.filter((id) => id !== itemId)
+                          : [...previous, itemId],
+                      )
+                    }
+                  />
+                ))}
+            {poolView === "school" && (groups.data?.items.length ?? 0) === 0 ? (
+              <p className="py-6 text-center text-xs text-muted-foreground">
+                {groups.isPending ? "正在读取院校…" : "当前筛选下没有可加入的院校。"}
+              </p>
+            ) : null}
+            {poolItems.length === 0 && poolView === "list" ? (
               <p className="py-6 text-center text-xs text-muted-foreground">
                 {pool.isPending ? "正在读取候选池…" : "候选池中没有可加入的志愿。请放宽筛选条件。"}
               </p>
@@ -596,6 +775,37 @@ export default function SchemeEditorPage() {
                 counts={schemeBucketCounts}
                 onChange={setSchemeBucket}
               />
+              <div className="flex flex-wrap gap-2">
+                <Select
+                  className="w-32"
+                  value={schemeProvince}
+                  onChange={(event) => {
+                    setSchemeProvince(event.target.value);
+                    // A school from another province would be impossible to match, so clear
+                    // it rather than silently showing an empty list.
+                    setSchemeUniversity("");
+                  }}
+                >
+                  <option value="">全部省份</option>
+                  {schemeProvinceOptions.map(([name, count]) => (
+                    <option key={name} value={name}>
+                      {name}（{count}）
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  className="min-w-36 flex-1"
+                  value={schemeUniversity}
+                  onChange={(event) => setSchemeUniversity(event.target.value)}
+                >
+                  <option value="">全部学校</option>
+                  {schemeUniversityOptions.map(([name, count]) => (
+                    <option key={name} value={name}>
+                      {name}（{count}）
+                    </option>
+                  ))}
+                </Select>
+              </div>
               <label className="flex items-center gap-1.5 text-xs">
                 <Checkbox
                   checked={schemeOnlyUnlocked}
@@ -612,6 +822,8 @@ export default function SchemeEditorPage() {
                     className="ml-1 underline"
                     onClick={() => {
                       setSchemeBucket("");
+                      setSchemeProvince("");
+                      setSchemeUniversity("");
                       setSchemeSearch("");
                       setSchemeOnlyUnlocked(false);
                     }}
@@ -695,6 +907,7 @@ function PoolRow({
         onChange={onToggle}
         disabled={disabled}
         className="mt-1"
+        data-testid="pool-row-checkbox"
       />
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex items-start justify-between gap-2">
@@ -838,5 +1051,87 @@ function SchemeRow({
         </div>
       </div>
     </li>
+  );
+}
+
+/**
+ * One university in the grouped pool: the school line, and — when expanded — its majors.
+ *
+ * Grouping is done by the server (see `list_university_groups`), because one school's rows
+ * span several pages and a client-side group would only describe the current page.
+ */
+function SchoolGroupRow({
+  group,
+  expanded,
+  onToggle,
+  majors,
+  majorsLoading,
+  selectedIds,
+  disabled,
+  onToggleMajor,
+}: {
+  group: UniversityGroup;
+  expanded: boolean;
+  onToggle: () => void;
+  majors: RecommendationItem[];
+  majorsLoading: boolean;
+  selectedIds: number[];
+  disabled: boolean;
+  onToggleMajor: (itemId: number) => void;
+}) {
+  return (
+    <div className="rounded-md border">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-start gap-3 p-3 text-left transition-colors hover:bg-accent/50"
+      >
+        <span className="mt-0.5 w-4 shrink-0 text-muted-foreground">{expanded ? "▾" : "▸"}</span>
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">{group.university_name}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {group.province_name ?? "—"}
+                {group.city_name ? ` · ${group.city_name}` : ""}
+              </p>
+            </div>
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+              {group.item_count} 个专业
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {group.is_985 ? <Badge variant="secondary">985</Badge> : null}
+            {group.is_211 ? <Badge variant="secondary">211</Badge> : null}
+            {group.is_double_first_class ? <Badge variant="secondary">双一流</Badge> : null}
+            <span className="text-xs tabular-nums text-muted-foreground">
+              ACS {group.min_acs?.toFixed(1) ?? "—"}~{group.max_acs?.toFixed(1) ?? "—"}
+            </span>
+          </div>
+        </div>
+      </button>
+
+      {expanded ? (
+        <div className="space-y-2 border-t bg-muted/30 p-2">
+          {majorsLoading ? (
+            <p className="py-3 text-center text-xs text-muted-foreground">正在读取该校专业…</p>
+          ) : majors.length === 0 ? (
+            <p className="py-3 text-center text-xs text-muted-foreground">
+              该校在当前筛选下没有可加入的专业。
+            </p>
+          ) : (
+            majors.map((item) => (
+              <PoolRow
+                key={item.item_id}
+                item={item}
+                checked={selectedIds.includes(item.item_id)}
+                disabled={disabled}
+                onToggle={() => onToggleMajor(item.item_id)}
+              />
+            ))
+          )}
+        </div>
+      ) : null}
+    </div>
   );
 }

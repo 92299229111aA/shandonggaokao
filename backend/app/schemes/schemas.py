@@ -93,6 +93,8 @@ class SchemeItemDTO(BaseModel):
     program_label: str
     plan_name: str
     university_name: str
+    # Needed by the editor's scheme-panel filters (省份 / 学校).
+    province_name: str | None = None
     eligibility: str
     acs: float | None = None
     confidence: float | None = None

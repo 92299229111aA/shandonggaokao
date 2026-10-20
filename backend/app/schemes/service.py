@@ -618,6 +618,7 @@ class SchemeService:
                 program_label=f"{plan.plan_name} · {university.name}",
                 plan_name=plan.plan_name,
                 university_name=university.name,
+                province_name=university.province_name,
                 eligibility=scheme_item.eligibility or "PASS",
                 acs=scheme_item.acs,
                 confidence=scheme_item.confidence,

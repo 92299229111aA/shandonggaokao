@@ -254,6 +254,29 @@ export interface RecommendationItemPage {
   bucket_counts: Record<string, number>;
 }
 
+/** 候选池「按学校聚合」视图的一行。 */
+export interface UniversityGroup {
+  university_id: number;
+  university_name: string;
+  province_name: string | null;
+  city_name: string | null;
+  is_985: boolean;
+  is_211: boolean;
+  is_double_first_class: boolean;
+  item_count: number;
+  max_acs: number | null;
+  min_acs: number | null;
+  max_preference_score: number | null;
+}
+
+export interface UniversityGroupPage {
+  items: UniversityGroup[];
+  total: number;
+  limit: number;
+  offset: number;
+  sort: string;
+}
+
 export interface RecommendationRun {
   session: RecommendationSession;
   pool_size: number;
@@ -271,6 +294,7 @@ export interface SchemeItem {
   program_label: string;
   plan_name: string;
   university_name: string;
+  province_name: string | null;
   eligibility: Eligibility;
   acs: number | null;
   confidence: number | null;

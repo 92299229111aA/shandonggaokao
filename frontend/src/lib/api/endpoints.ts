@@ -16,6 +16,7 @@ import type {
   SchemeVersionSummary,
   ScoreRankResult,
   RiskMode,
+  UniversityGroupPage,
 } from "./types";
 
 export const metaApi = {
@@ -94,10 +95,32 @@ export const recommendationApi = {
       is_985?: boolean;
       is_211?: boolean;
       is_double_first_class?: boolean;
+      /** 只看某一所院校（按学校聚合视图展开用）。 */
+      university_id?: number;
       /** 排除该方案当前版本已有的志愿（编辑器候选池用）。 */
       exclude_scheme_id?: number;
     } = {},
   ) => apiFetch<RecommendationItemPage>(`/recommendations/${sessionId}/items${buildQuery(params)}`),
+  universityGroups: (
+    sessionId: number,
+    params: {
+      limit?: number;
+      offset?: number;
+      risk_bucket?: string;
+      eligibility?: string;
+      search?: string;
+      only_pooled?: boolean;
+      sort?: string;
+      province_name?: string;
+      is_985?: boolean;
+      is_211?: boolean;
+      is_double_first_class?: boolean;
+      exclude_scheme_id?: number;
+    } = {},
+  ) =>
+    apiFetch<UniversityGroupPage>(
+      `/recommendations/${sessionId}/university-groups${buildQuery(params)}`,
+    ),
   item: (itemId: number) => apiFetch<RecommendationItem>(`/recommendations/items/${itemId}`),
 };
 

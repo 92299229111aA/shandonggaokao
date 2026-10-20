@@ -459,7 +459,6 @@ def test_exclude_scheme_id_drops_items_already_in_the_scheme(db_session, mixed) 
 def test_bucket_counts_reflect_filters_but_not_the_bucket_filter(db_session, mixed) -> None:
     """Tab counts must match what the list will contain, per bucket."""
     service = RecommendationService(db_session)
-
     plain = service.list_items(session_id=mixed["session_id"], limit=1, offset=0)
     assert plain.bucket_counts == {bucket: PER_BUCKET for bucket in BUCKETS}
 
@@ -506,6 +505,102 @@ def test_bucket_counts_shrink_after_excluding_a_scheme(db_session, mixed) -> Non
     )
     assert page.bucket_counts["BORDER"] == PER_BUCKET - 2
     assert page.bucket_counts["SAFE"] == PER_BUCKET
+
+
+# ---------------- grouped-by-university view ----------------
+#
+# The joins in `_build_filters` are conditional for speed. That makes it possible to write
+# a grouped query that references `University` without joining it — SQLAlchemy then infers
+# FROM from the column reference and silently produces a cartesian product. These tests
+# fail loudly on that, because a cross join multiplies `item_count` while `total` may still
+# look plausible.
+
+
+def test_university_groups_sum_matches_the_flat_total(db_session, seeded) -> None:
+    """Σ item_count over all groups must equal the number of items in the flat list."""
+    service = RecommendationService(db_session)
+    flat = service.list_items(session_id=seeded["session_id"], limit=1, offset=0)
+
+    collected = 0
+    offset = 0
+    while True:
+        page = service.list_university_groups(
+            session_id=seeded["session_id"], limit=10, offset=offset
+        )
+        if not page.items:
+            break
+        collected += sum(group.item_count for group in page.items)
+        offset += len(page.items)
+    assert collected == flat.total, (
+        f"分组条目数之和 {collected} ≠ 平铺 {flat.total}"
+        "（差值是笛卡尔积的典型症状）"
+    )
+
+
+def test_university_groups_total_is_the_distinct_university_count(db_session, seeded) -> None:
+    """6 universities seeded, so the grouped view must report 6 groups."""
+    page = RecommendationService(db_session).list_university_groups(
+        session_id=seeded["session_id"], limit=50, offset=0
+    )
+    assert page.total == len(seeded["universities"])
+    assert len({group.university_id for group in page.items}) == len(seeded["universities"])
+    # Every group must carry real university data, not a blank placeholder from a bad join.
+    for group in page.items:
+        assert group.university_name
+        assert group.province_name
+
+
+def test_university_groups_respect_filters_and_expand_consistently(db_session, seeded) -> None:
+    """A group's count must equal the rows returned when that group is expanded."""
+    service = RecommendationService(db_session)
+    groups = service.list_university_groups(
+        session_id=seeded["session_id"], limit=50, offset=0, province_name="北京市"
+    )
+    assert groups.total == 1, "北京市只种了一所学校"
+
+    group = groups.items[0]
+    expanded = service.list_items(
+        session_id=seeded["session_id"],
+        limit=500,
+        offset=0,
+        university_id=group.university_id,
+    )
+    assert expanded.total == group.item_count
+    assert all(item.university_id == group.university_id for item in expanded.items)
+
+
+def test_university_groups_respect_exclude_scheme(db_session, mixed) -> None:
+    """Excluding a scheme must drop groups that become empty and lower the counts."""
+    from app.recommendation.models import Scheme, SchemeItem, SchemeVersion
+
+    scheme = Scheme(
+        session_id=mixed["session_id"], risk_mode="BALANCED", target_count=96, current_version_no=1
+    )
+    db_session.add(scheme)
+    db_session.flush()
+    version = SchemeVersion(scheme_id=scheme.id, version_no=1, operation="OPTIMIZE", item_count=3)
+    db_session.add(version)
+    db_session.flush()
+    chosen = mixed["indexes"]["SAFE"][:3]
+    for position, item_id in enumerate(chosen, start=1):
+        db_session.add(
+            SchemeItem(
+                scheme_version_id=version.id,
+                recommendation_item_id=item_id,
+                position=position,
+                locked=False,
+                fixed_position=False,
+            )
+        )
+    db_session.flush()
+
+    groups = RecommendationService(db_session).list_university_groups(
+        session_id=mixed["session_id"], limit=10, offset=0, exclude_scheme_id=scheme.id
+    )
+    # The fixture puts every item in one university, so one group with fewer items remains.
+    assert groups.total == 1
+    assert groups.items[0].item_count == PER_BUCKET * len(BUCKETS) - len(chosen)
+
 
 
 
