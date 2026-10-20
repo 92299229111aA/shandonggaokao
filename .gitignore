@@ -34,6 +34,12 @@ logs/
 # Database backups (pg_dump output, tens of MB, never source)
 backups/
 
+# ---- User-supplied source workbooks ----
+# Year folders dropped into the repo root (e.g. 2026/) hold official PDFs/XLS that must
+# not be redistributed from a public repository. Import them with
+# `python -m app.ingestion.etl_2026 --data-root <dir>`; they stay out of git.
+/20[0-9][0-9]/
+
 # ---- OS / editor ----
 .DS_Store
 Thumbs.db

@@ -63,7 +63,7 @@ from app.reference.models import Major, University
 # so their location is never hardcoded — it is passed in or read from GAOKAO_DATA_ROOT.
 # See app/ingestion/data_root.py.
 
-SNAPSHOT_CODE = "SD-2022-2025"
+SNAPSHOT_CODE = "SD-2022-2026"
 POLICY_VERSION = "sd-real-2022-2025"
 QUALITY = "THIRD_PARTY"
 PUBLISHER = "百度网盘教育资料整理包（非官方）"

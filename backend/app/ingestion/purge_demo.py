@@ -29,7 +29,7 @@ from app.candidate.models import PreferenceProfile, Profile
 from app.db.session import session_scope
 from app.reference.models import University
 
-REAL_SNAPSHOT_CODE = "SD-2022-2025"
+REAL_SNAPSHOT_CODE = "SD-2022-2026"
 
 
 def _delete_snapshot_data(session: Session, snapshot_ids: list[int]) -> dict[str, int]:

@@ -71,7 +71,7 @@ def main() -> int:
             select(AdmissionCycle).where(AdmissionCycle.exam_year == 2025)
         ).scalars().first()
         snapshot = session.execute(
-            select(DatasetSnapshot).where(DatasetSnapshot.code == "SD-2022-2025")
+            select(DatasetSnapshot).where(DatasetSnapshot.code == "SD-2022-2026")
         ).scalar_one()
         rows = PlanRepository(session).list_candidates(
             cycle_id=cycle.id, snapshot_id=snapshot.id, limit=SAMPLE, offset=0
