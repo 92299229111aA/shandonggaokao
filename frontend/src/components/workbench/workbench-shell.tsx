@@ -68,7 +68,7 @@ export function WorkbenchShell({ children }: { children: React.ReactNode }) {
       <>
         <aside className="sidebar" aria-label="主导航">
           <Link className="brand" href="/">
-            <span className="brand-mark">志</span>
+            <span className="brand-mark" aria-hidden="true" />
             <span>
               <span className="brand-name">山东高考智能志愿</span>
               <br />

@@ -56,7 +56,8 @@ small, .small { font-size: 12px; }
 .r4 { color: var(--green); background: var(--green-bg); }
 .sidebar { width: 224px; position: fixed; inset: 0px auto 0px 0px; background: var(--paper); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 26px 16px; z-index: 40; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 0px 8px 29px; }
-.brand-mark { height: 36px; width: 36px; border-radius: 10px; background: var(--blue); display: grid; place-items: center; color: rgb(255, 255, 255); font-size: 19px; font-weight: 650; }
+.brand-mark { height: 36px; width: 36px; border-radius: 10px; flex: 0 0 auto;
+  background: url("/icon.png") center / contain no-repeat; }
 .brand-name { font-size: 15px; font-weight: 650; line-height: 1.4; }
 .brand small { font-size: 9px; letter-spacing: 1.5px; color: rgb(137, 150, 168); }
 .nav-label { font-size: 11px; letter-spacing: 1px; color: rgb(139, 152, 170); margin: 10px 12px; }
@@ -690,3 +691,21 @@ input[type="checkbox"] { accent-color: var(--blue); width: 15px; height: 15px; }
 
 /* 行内竖向排列的候选列表字段间距 */
 .candidate-meta { line-height: 1.7; }
+
+/* ---- 启动骨架（静态导出下先渲染它，避免 hydration 不匹配）---- */
+.boot-splash {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  background: var(--bg);
+  color: var(--muted);
+}
+.boot-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: url("/icon.png") center / contain no-repeat;
+}
+.boot-splash p { font-size: 13px; }

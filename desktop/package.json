@@ -1,0 +1,60 @@
+{
+  "name": "shandong-gaokao-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "山东高考智能志愿系统 桌面版",
+  "author": {
+    "name": "个人项目"
+  },
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "28.3.3",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "cn.sdgaokao.workbench",
+    "productName": "山东高考智能志愿",
+    "copyright": "个人非商业项目",
+    "electronDist": "node_modules/electron/dist",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend/dist/gaokao",
+        "to": "backend"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "artifactName": "山东高考智能志愿-${version}-安装包.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "山东高考智能志愿",
+      "installerLanguages": ["zh_CN"],
+      "language": "2052",
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

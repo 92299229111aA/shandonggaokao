@@ -24,8 +24,13 @@ export class ApiError extends Error {
   }
 }
 
+// 桌面版由同一个后端进程提供前端与 API，所以 base 传 "/"（去掉尾斜杠就是空串，
+// 于是所有请求走相对路径）。不能用空字符串当哨兵 —— 构建时会被当成"未设置"而回落到 8000。
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:8000";
+
+/** 给用户看的地址；相对路径模式下后端就是"本地服务"。 */
+const API_LABEL = API_BASE_URL || "本地服务";
 
 const API_PREFIX = "/api/v1";
 
@@ -51,7 +56,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     throw new ApiError(
       0,
       "NETWORK_ERROR",
-      `无法连接后端服务（${API_BASE_URL}）。请确认后端已启动：docker compose up -d api`,
+      `无法连接后端服务（${API_LABEL}）。请确认后端已启动：docker compose up -d api`,
       { cause: String(cause) },
     );
   }

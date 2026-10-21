@@ -58,3 +58,6 @@ docs/design/_sample-data.json
 
 backend/build/
 staging/
+desktop/node_modules/
+desktop/release/
+backend/dist/

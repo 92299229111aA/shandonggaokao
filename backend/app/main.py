@@ -9,9 +9,12 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.api.v1 import api_router
@@ -68,9 +71,35 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     app.include_router(api_router, prefix=settings.api_v1_prefix)
 
-    @app.get("/", include_in_schema=False)
-    def root() -> dict:
-        return {"service": settings.app_name, "version": __version__, "docs": "/docs"}
+    # 桌面版：同一个进程既提供 API 也提供前端静态文件。
+    #
+    # 这样 Electron 只需要加载一个本地 URL，前端用相对路径调 API ——
+    # 没有 CORS、没有 file:// 的路径问题、也只有一个后端进程要管。
+    static_dir = Path(settings.static_dir) if settings.static_dir else None
+    if static_dir and (static_dir / "index.html").exists():
+        logger.info("serving frontend from %s", static_dir)
+
+        # 带哈希的构建产物可以长缓存；其余短缓存，方便升级后立刻生效
+        if (static_dir / "_next").is_dir():
+            app.mount("/_next", StaticFiles(directory=static_dir / "_next"), name="next-assets")
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        def spa(full_path: str) -> FileResponse:
+            # 先当真实文件处理，找不到就回退到 index.html 交给前端路由
+            root = static_dir.resolve()
+            candidate = (root / full_path).resolve()
+            # 静态导出是目录结构（schemes/index.html），目录要落回它自己的 index.html，
+            # 否则每个路由都拿到根页面，丢失各自预加载的分包。
+            if candidate.is_dir():
+                candidate = candidate / "index.html"
+            if full_path and candidate.is_file() and candidate.is_relative_to(root):
+                return FileResponse(candidate)
+            return FileResponse(root / "index.html")
+    else:
+
+        @app.get("/", include_in_schema=False)
+        def root() -> dict:
+            return {"service": settings.app_name, "version": __version__, "docs": "/docs"}
 
     return app
 
