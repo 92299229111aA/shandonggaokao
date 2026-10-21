@@ -16,12 +16,12 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
+from app.db.dialect import JSONType, fk_literal, fk_target, table_schema
 
-SCHEMA = "recommendation"
+SCHEMA = table_schema("recommendation")
 
 
 class ModelVersion(Base, TimestampMixin):
@@ -37,7 +37,7 @@ class ModelVersion(Base, TimestampMixin):
     code: Mapped[str] = mapped_column(String(64), nullable=False)
     label: Mapped[str] = mapped_column(String(128), nullable=False)
     # Full ACS/Confidence/Preference/optimizer parameter set as published in docs/ALGORITHM.md
-    parameters: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    parameters: Mapped[dict] = mapped_column(JSONType, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
 
@@ -54,19 +54,19 @@ class Session(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     profile_id: Mapped[int] = mapped_column(
-        ForeignKey("candidate.profiles.id", ondelete="CASCADE"), nullable=False
+        ForeignKey(fk_literal("candidate.profiles.id"), ondelete="CASCADE"), nullable=False
     )
     preference_profile_id: Mapped[int] = mapped_column(
-        ForeignKey("candidate.preference_profiles.id", ondelete="RESTRICT"), nullable=False
+        ForeignKey(fk_literal("candidate.preference_profiles.id"), ondelete="RESTRICT"), nullable=False
     )
     cycle_id: Mapped[int] = mapped_column(
-        ForeignKey("admission.admission_cycles.id", ondelete="RESTRICT"), nullable=False
+        ForeignKey(fk_literal("admission.admission_cycles.id"), ondelete="RESTRICT"), nullable=False
     )
     snapshot_id: Mapped[int] = mapped_column(
-        ForeignKey("admission.dataset_snapshots.id", ondelete="RESTRICT"), nullable=False
+        ForeignKey(fk_literal("admission.dataset_snapshots.id"), ondelete="RESTRICT"), nullable=False
     )
     model_version_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.model_versions.id", ondelete="RESTRICT"), nullable=False
+        ForeignKey(fk_target(SCHEMA, "model_versions.id"), ondelete="RESTRICT"), nullable=False
     )
     # Locked scalars — the replay contract
     profile_version: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -77,7 +77,7 @@ class Session(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="RUNNING")
     stage: Mapped[str | None] = mapped_column(String(32))
     # Pipeline counters: scanned / fail / unknown / hard-excluded / pooled ...
-    stats: Mapped[dict | None] = mapped_column(JSONB)
+    stats: Mapped[dict | None] = mapped_column(JSONType)
     error_message: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -119,30 +119,30 @@ class RecommendationItem(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     session_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.sessions.id", ondelete="CASCADE"), nullable=False
+        ForeignKey(fk_target(SCHEMA, "sessions.id"), ondelete="CASCADE"), nullable=False
     )
     plan_id: Mapped[int] = mapped_column(
-        ForeignKey("admission.admission_plans.id", ondelete="CASCADE"), nullable=False
+        ForeignKey(fk_literal("admission.admission_plans.id"), ondelete="CASCADE"), nullable=False
     )
 
     # ---- layer 1: Eligibility (can I apply at all?) ----
     eligibility: Mapped[str] = mapped_column(String(8), nullable=False, default="UNKNOWN")
-    eligibility_reasons: Mapped[list | None] = mapped_column(JSONB)
+    eligibility_reasons: Mapped[list | None] = mapped_column(JSONType)
     # ---- layer 2: ACS (how safe is it historically?) ----
     base_acs: Mapped[float | None] = mapped_column(Float)
     confidence: Mapped[float | None] = mapped_column(Float)
     acs: Mapped[float | None] = mapped_column(Float)
     risk_bucket: Mapped[str | None] = mapped_column(String(16))
-    acs_explanation: Mapped[dict | None] = mapped_column(JSONB)
+    acs_explanation: Mapped[dict | None] = mapped_column(JSONType)
     # ---- layer 3: Preference (how much does the candidate want it?) ----
     preference_score: Mapped[float | None] = mapped_column(Float)
-    preference_dimensions: Mapped[dict | None] = mapped_column(JSONB)
+    preference_dimensions: Mapped[dict | None] = mapped_column(JSONType)
     # ---- pipeline bookkeeping ----
     in_candidate_pool: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     excluded_by: Mapped[str | None] = mapped_column(String(32))
     is_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     source_plan_snapshot_id: Mapped[int | None] = mapped_column(
-        ForeignKey("admission.dataset_snapshots.id", ondelete="SET NULL")
+        ForeignKey(fk_literal("admission.dataset_snapshots.id"), ondelete="SET NULL")
     )
 
     session: Mapped[Session] = relationship(back_populates="items")
@@ -162,7 +162,7 @@ class Scheme(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     session_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.sessions.id", ondelete="CASCADE"), nullable=False
+        ForeignKey(fk_target(SCHEMA, "sessions.id"), ondelete="CASCADE"), nullable=False
     )
     title: Mapped[str] = mapped_column(String(128), nullable=False, default="志愿方案")
     # Policy number mirrored from admission_cycles at creation time for display,
@@ -193,17 +193,17 @@ class SchemeVersion(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     scheme_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.schemes.id", ondelete="CASCADE"), nullable=False
+        ForeignKey(fk_target(SCHEMA, "schemes.id"), ondelete="CASCADE"), nullable=False
     )
     version_no: Mapped[int] = mapped_column(Integer, nullable=False)
     # OPTIMIZE / MANUAL_EDIT / REORDER / LOCK / UNLOCK / REMOVE / ADD / IMPORT
     operation: Mapped[str] = mapped_column(String(24), nullable=False, default="MANUAL_EDIT")
     change_summary: Mapped[str | None] = mapped_column(Text)
     snapshot_id: Mapped[int | None] = mapped_column(
-        ForeignKey("admission.dataset_snapshots.id", ondelete="SET NULL")
+        ForeignKey(fk_literal("admission.dataset_snapshots.id"), ondelete="SET NULL")
     )
     model_version: Mapped[str | None] = mapped_column(String(64))
-    optimizer_stats: Mapped[dict | None] = mapped_column(JSONB)
+    optimizer_stats: Mapped[dict | None] = mapped_column(JSONType)
     item_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     scheme: Mapped[Scheme] = relationship(back_populates="versions")
@@ -237,10 +237,10 @@ class SchemeItem(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     scheme_version_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.scheme_versions.id", ondelete="CASCADE"), nullable=False
+        ForeignKey(fk_target(SCHEMA, "scheme_versions.id"), ondelete="CASCADE"), nullable=False
     )
     recommendation_item_id: Mapped[int | None] = mapped_column(
-        ForeignKey(f"{SCHEMA}.recommendation_items.id", ondelete="SET NULL")
+        ForeignKey(fk_target(SCHEMA, "recommendation_items.id"), ondelete="SET NULL")
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -271,20 +271,20 @@ class HealthCheck(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     scheme_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.schemes.id", ondelete="CASCADE"), nullable=False
+        ForeignKey(fk_target(SCHEMA, "schemes.id"), ondelete="CASCADE"), nullable=False
     )
     scheme_version_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.scheme_versions.id", ondelete="RESTRICT"), nullable=False
+        ForeignKey(fk_target(SCHEMA, "scheme_versions.id"), ondelete="RESTRICT"), nullable=False
     )
     snapshot_id: Mapped[int | None] = mapped_column(
-        ForeignKey("admission.dataset_snapshots.id", ondelete="SET NULL")
+        ForeignKey(fk_literal("admission.dataset_snapshots.id"), ondelete="SET NULL")
     )
     # Product indicator only — explicitly NOT a录取概率 (see docs/ALGORITHM.md)
     score: Mapped[int] = mapped_column(Integer, nullable=False)
     error_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     warning_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     info_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    summary: Mapped[dict | None] = mapped_column(JSONB)
+    summary: Mapped[dict | None] = mapped_column(JSONType)
 
     issues: Mapped[list[HealthCheckIssue]] = relationship(
         back_populates="health_check", cascade="all, delete-orphan"
@@ -301,13 +301,13 @@ class HealthCheckIssue(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     health_check_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.health_checks.id", ondelete="CASCADE"), nullable=False
+        ForeignKey(fk_target(SCHEMA, "health_checks.id"), ondelete="CASCADE"), nullable=False
     )
     code: Mapped[str] = mapped_column(String(48), nullable=False)
     severity: Mapped[str] = mapped_column(String(8), nullable=False)
     position: Mapped[int | None] = mapped_column(Integer)
     message: Mapped[str] = mapped_column(Text, nullable=False)
-    detail: Mapped[dict | None] = mapped_column(JSONB)
+    detail: Mapped[dict | None] = mapped_column(JSONType)
     suggestion: Mapped[str | None] = mapped_column(Text)
 
     health_check: Mapped[HealthCheck] = relationship(back_populates="issues")

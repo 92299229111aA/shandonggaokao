@@ -21,9 +21,24 @@ _session_factory: sessionmaker[Session] | None = None
 
 def build_engine(url: str | None = None, *, echo: bool | None = None) -> Engine:
     settings = get_settings()
+    target = url or settings.effective_database_url()
+    echo_flag = settings.sql_echo if echo is None else echo
+
+    if target.startswith("sqlite"):
+        # SQLite needs `check_same_thread=False` because FastAPI runs sync routes on a
+        # thread pool, and the default guard rejects a connection reused across threads.
+        # `pool_pre_ping` and a sized pool are PostgreSQL concerns; the desktop app serves
+        # one local user, so the default pool is both sufficient and cheaper.
+        return create_engine(
+            target,
+            echo=echo_flag,
+            connect_args={"check_same_thread": False},
+            future=True,
+        )
+
     return create_engine(
-        url or settings.database_url,
-        echo=settings.sql_echo if echo is None else echo,
+        target,
+        echo=echo_flag,
         pool_pre_ping=True,
         pool_size=5,
         max_overflow=5,
@@ -69,7 +84,14 @@ def get_db() -> Iterator[Session]:
 
 
 def set_schemas(engine: Engine, schemas: list[str]) -> None:
-    """Pin search_path so ORM models need no schema qualification on writes."""
+    """Pin search_path so ORM models need no schema qualification on writes.
+
+    PostgreSQL only. SQLite has neither schemas nor `set_config`, and in that mode the
+    models already resolve to unqualified names (see app/db/dialect.py), so there is
+    nothing to pin.
+    """
+    if engine.dialect.name != "postgresql":
+        return
 
     @event.listens_for(engine, "connect")
     def _set_search_path(dbapi_connection, _record):  # pragma: no cover - driver hook

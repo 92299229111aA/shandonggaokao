@@ -17,13 +17,13 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
+from app.db.dialect import JSONType, fk_literal, fk_target, table_schema
 from app.reference.models import University
 
-SCHEMA = "admission"
+SCHEMA = table_schema("admission")
 
 
 class SourceDocument(Base, TimestampMixin):
@@ -75,7 +75,7 @@ class DatasetSnapshot(Base, TimestampMixin):
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     source_document_id: Mapped[int | None] = mapped_column(
-        ForeignKey(f"{SCHEMA}.source_documents.id", ondelete="SET NULL")
+        ForeignKey(fk_target(SCHEMA, "source_documents.id"), ondelete="SET NULL")
     )
     notes: Mapped[str | None] = mapped_column(Text)
 
@@ -144,7 +144,7 @@ class ExamYearStats(Base, TimestampMixin):
     regular_line: Mapped[int | None] = mapped_column(Integer)
     ranked_candidates: Mapped[int] = mapped_column(Integer, nullable=False)
     source_document_id: Mapped[int | None] = mapped_column(
-        ForeignKey(f"{SCHEMA}.source_documents.id", ondelete="SET NULL")
+        ForeignKey(fk_target(SCHEMA, "source_documents.id"), ondelete="SET NULL")
     )
 
 
@@ -169,7 +169,7 @@ class ScoreRankSegment(Base, TimestampMixin):
     same_score_count: Mapped[int] = mapped_column(Integer, nullable=False)
     cumulative_rank: Mapped[int] = mapped_column(Integer, nullable=False)
     source_document_id: Mapped[int | None] = mapped_column(
-        ForeignKey(f"{SCHEMA}.source_documents.id", ondelete="SET NULL")
+        ForeignKey(fk_target(SCHEMA, "source_documents.id"), ondelete="SET NULL")
     )
 
 
@@ -199,10 +199,10 @@ class ProgramSeries(Base, TimestampMixin):
     series_key: Mapped[str] = mapped_column(String(160), nullable=False)
     canonical_name: Mapped[str] = mapped_column(String(160), nullable=False)
     university_id: Mapped[int] = mapped_column(
-        ForeignKey("reference.universities.id", ondelete="RESTRICT"), nullable=False
+        ForeignKey(fk_literal("reference.universities.id"), ondelete="RESTRICT"), nullable=False
     )
-    major_id: Mapped[int | None] = mapped_column(ForeignKey("reference.majors.id", ondelete="SET NULL"))
-    campus_id: Mapped[int | None] = mapped_column(ForeignKey("reference.campuses.id", ondelete="SET NULL"))
+    major_id: Mapped[int | None] = mapped_column(ForeignKey(fk_literal("reference.majors.id"), ondelete="SET NULL"))
+    campus_id: Mapped[int | None] = mapped_column(ForeignKey(fk_literal("reference.campuses.id"), ondelete="SET NULL"))
     cooperative: Mapped[str] = mapped_column(String(24), nullable=False, default="NONE")
     match_quality: Mapped[str] = mapped_column(String(16), nullable=False, default="EXACT")
     first_year: Mapped[int | None] = mapped_column(Integer)
@@ -227,7 +227,7 @@ class SubjectRuleGroup(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     rule_set_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.subject_rule_sets.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey(fk_target(SCHEMA, "subject_rule_sets.id"), ondelete="CASCADE"), nullable=False, index=True
     )
     group_no: Mapped[int] = mapped_column(Integer, nullable=False)
     mode: Mapped[str] = mapped_column(String(8), nullable=False, default="ALL")
@@ -248,7 +248,7 @@ class SubjectRuleItem(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     group_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.subject_rule_groups.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey(fk_target(SCHEMA, "subject_rule_groups.id"), ondelete="CASCADE"), nullable=False, index=True
     )
     subject_code: Mapped[str] = mapped_column(String(8), nullable=False)
     note: Mapped[str | None] = mapped_column(Text)
@@ -272,7 +272,7 @@ class SubjectRuleSet(Base, TimestampMixin):
     # 官方原文，例如“物理和化学(2门科目考生均须选考方可报考)”
     raw_text: Mapped[str | None] = mapped_column(Text)
     source_document_id: Mapped[int | None] = mapped_column(
-        ForeignKey(f"{SCHEMA}.source_documents.id", ondelete="SET NULL")
+        ForeignKey(fk_target(SCHEMA, "source_documents.id"), ondelete="SET NULL")
     )
     # False when the official text could not be parsed deterministically
     is_authoritative: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -305,19 +305,19 @@ class AdmissionPlan(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     cycle_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.admission_cycles.id", ondelete="CASCADE"), nullable=False
+        ForeignKey(fk_target(SCHEMA, "admission_cycles.id"), ondelete="CASCADE"), nullable=False
     )
     series_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.program_series.id", ondelete="CASCADE"), nullable=False
+        ForeignKey(fk_target(SCHEMA, "program_series.id"), ondelete="CASCADE"), nullable=False
     )
     subject_rule_set_id: Mapped[int | None] = mapped_column(
-        ForeignKey(f"{SCHEMA}.subject_rule_sets.id", ondelete="SET NULL")
+        ForeignKey(fk_target(SCHEMA, "subject_rule_sets.id"), ondelete="SET NULL")
     )
     snapshot_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.dataset_snapshots.id", ondelete="RESTRICT"), nullable=False
+        ForeignKey(fk_target(SCHEMA, "dataset_snapshots.id"), ondelete="RESTRICT"), nullable=False
     )
     source_document_id: Mapped[int | None] = mapped_column(
-        ForeignKey(f"{SCHEMA}.source_documents.id", ondelete="SET NULL")
+        ForeignKey(fk_target(SCHEMA, "source_documents.id"), ondelete="SET NULL")
     )
     # Official plan text — the display名称 for this year (专业名称 may be reworded)
     plan_name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -361,18 +361,18 @@ class AdmissionOutcome(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     series_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.program_series.id", ondelete="CASCADE"), nullable=False
+        ForeignKey(fk_target(SCHEMA, "program_series.id"), ondelete="CASCADE"), nullable=False
     )
     # plan_id is optional: a series may have outcomes from years whose plan rows
     # were imported later, but linking lets us cross-check plan vs. outcome.
     plan_id: Mapped[int | None] = mapped_column(
-        ForeignKey(f"{SCHEMA}.admission_plans.id", ondelete="SET NULL")
+        ForeignKey(fk_target(SCHEMA, "admission_plans.id"), ondelete="SET NULL")
     )
     snapshot_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.dataset_snapshots.id", ondelete="RESTRICT"), nullable=False
+        ForeignKey(fk_target(SCHEMA, "dataset_snapshots.id"), ondelete="RESTRICT"), nullable=False
     )
     source_document_id: Mapped[int | None] = mapped_column(
-        ForeignKey(f"{SCHEMA}.source_documents.id", ondelete="SET NULL")
+        ForeignKey(fk_target(SCHEMA, "source_documents.id"), ondelete="SET NULL")
     )
     exam_year: Mapped[int] = mapped_column(Integer, nullable=False)
     batch_code: Mapped[str] = mapped_column(String(32), nullable=False, default="REGULAR_BATCH_1")
@@ -415,17 +415,17 @@ class AdmissionRequirement(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     plan_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.admission_plans.id", ondelete="CASCADE"), nullable=False
+        ForeignKey(fk_target(SCHEMA, "admission_plans.id"), ondelete="CASCADE"), nullable=False
     )
     requirement_type: Mapped[str] = mapped_column(String(24), nullable=False)
     operator: Mapped[str] = mapped_column(String(16), nullable=False, default="EQ")
-    operand: Mapped[dict | None] = mapped_column(JSONB)
+    operand: Mapped[dict | None] = mapped_column(JSONType)
     severity: Mapped[str] = mapped_column(String(8), nullable=False, default="BLOCK")
     # False => rule text could not be resolved deterministically => UNKNOWN, never PASS
     is_deterministic: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     raw_text: Mapped[str | None] = mapped_column(Text)
     source_document_id: Mapped[int | None] = mapped_column(
-        ForeignKey(f"{SCHEMA}.source_documents.id", ondelete="SET NULL")
+        ForeignKey(fk_target(SCHEMA, "source_documents.id"), ondelete="SET NULL")
     )
 
 

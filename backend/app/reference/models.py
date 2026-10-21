@@ -6,8 +6,9 @@ from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Integer, Str
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
+from app.db.dialect import fk_target, table_schema
 
-SCHEMA = "reference"
+SCHEMA = table_schema("reference")
 
 
 class University(Base, TimestampMixin):
@@ -53,7 +54,7 @@ class Campus(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     university_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.universities.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey(fk_target(SCHEMA, "universities.id"), ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     province_code: Mapped[str | None] = mapped_column(String(2))

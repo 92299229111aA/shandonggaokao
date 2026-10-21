@@ -13,12 +13,12 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
+from app.db.dialect import JSONType, fk_literal, fk_target, table_schema
 
-SCHEMA = "candidate"
+SCHEMA = table_schema("candidate")
 
 # 山东夏季高考 6 选 3 的可选科目代码
 VALID_SUBJECT_CODES = ("PHY", "CHM", "BIO", "POL", "HIS", "GEO")
@@ -45,7 +45,7 @@ class Profile(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     display_name: Mapped[str | None] = mapped_column(String(64))
     cycle_id: Mapped[int] = mapped_column(
-        ForeignKey("admission.admission_cycles.id", ondelete="RESTRICT"), nullable=False
+        ForeignKey(fk_literal("admission.admission_cycles.id"), ondelete="RESTRICT"), nullable=False
     )
     exam_year: Mapped[int] = mapped_column(Integer, nullable=False)
     province_code: Mapped[str] = mapped_column(String(2), nullable=False, default="37")
@@ -55,7 +55,7 @@ class Profile(Base, TimestampMixin):
     # How `rank` was obtained: MANUAL (candidate typed it) or FROM_SEGMENT (converted)
     rank_source: Mapped[str] = mapped_column(String(16), nullable=False, default="MANUAL")
     # Effective subject set for the current cycle (candidate may switch one subject year to year)
-    subjects: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    subjects: Mapped[list[str]] = mapped_column(JSONType, nullable=False)
     foreign_language: Mapped[str | None] = mapped_column(String(16), default="ENG")
     sex: Mapped[str | None] = mapped_column(String(8))
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE")
@@ -100,7 +100,7 @@ class SubjectScore(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     profile_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.profiles.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey(fk_target(SCHEMA, "profiles.id"), ondelete="CASCADE"), nullable=False, index=True
     )
     subject_code: Mapped[str] = mapped_column(String(8), nullable=False)
     score: Mapped[int | None] = mapped_column(Integer)
@@ -129,7 +129,7 @@ class Attribute(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     profile_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.profiles.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey(fk_target(SCHEMA, "profiles.id"), ondelete="CASCADE"), nullable=False, index=True
     )
     attr_key: Mapped[str] = mapped_column(String(64), nullable=False)
     value_type: Mapped[str] = mapped_column(String(8), nullable=False, default="BOOL")
@@ -167,7 +167,7 @@ class PreferenceProfile(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     profile_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.profiles.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey(fk_target(SCHEMA, "profiles.id"), ondelete="CASCADE"), nullable=False, index=True
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     risk_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="BALANCED")
@@ -183,7 +183,7 @@ class PreferenceProfile(Base, TimestampMixin):
     min_safe_count: Mapped[int | None] = mapped_column(Integer)
     # Per-dimension weights; keys absent from the mapping fall back to defaults and
     # dimensions with no user data at all are dropped from the denominator.
-    dimension_weights: Mapped[dict | None] = mapped_column(JSONB)
+    dimension_weights: Mapped[dict | None] = mapped_column(JSONType)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
 
@@ -211,17 +211,16 @@ class MajorPreference(Base, TimestampMixin):
             "(major_id is not null) or (discipline_code is not null) or (major_name is not null)",
             name="target_required",
         ),
-        Index("ix_major_preferences_preference_profile_id", "preference_profile_id"),
         Index("ix_major_preferences_profile_polarity", "preference_profile_id", "polarity"),
         {"schema": SCHEMA},
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     preference_profile_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.preference_profiles.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey(fk_target(SCHEMA, "preference_profiles.id"), ondelete="CASCADE"), nullable=False, index=True
     )
     # Any one of the three selectors may be used; major_id is the strongest signal
-    major_id: Mapped[int | None] = mapped_column(ForeignKey("reference.majors.id", ondelete="SET NULL"))
+    major_id: Mapped[int | None] = mapped_column(ForeignKey(fk_literal("reference.majors.id"), ondelete="SET NULL"))
     discipline_code: Mapped[str | None] = mapped_column(String(2))
     major_name: Mapped[str | None] = mapped_column(String(128))
     polarity: Mapped[str] = mapped_column(String(8), nullable=False, default="INCLUDE")
@@ -240,14 +239,13 @@ class LocationPreference(Base, TimestampMixin):
         CheckConstraint("polarity in ('INCLUDE','EXCLUDE')", name="polarity_valid"),
         CheckConstraint("weight between 0 and 100", name="weight_range"),
         CheckConstraint("province_code is not null or city_code is not null", name="target_required"),
-        Index("ix_location_preferences_preference_profile_id", "preference_profile_id"),
         Index("ix_location_preferences_profile_polarity", "preference_profile_id", "polarity"),
         {"schema": SCHEMA},
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     preference_profile_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.preference_profiles.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey(fk_target(SCHEMA, "preference_profiles.id"), ondelete="CASCADE"), nullable=False, index=True
     )
     province_code: Mapped[str | None] = mapped_column(String(2))
     province_name: Mapped[str | None] = mapped_column(String(32))
@@ -271,17 +269,16 @@ class UniversityPreference(Base, TimestampMixin):
         CheckConstraint(
             "university_id is not null or trait is not null", name="target_required"
         ),
-        Index("ix_university_preferences_preference_profile_id", "preference_profile_id"),
         Index("ix_university_preferences_profile_polarity", "preference_profile_id", "polarity"),
         {"schema": SCHEMA},
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     preference_profile_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.preference_profiles.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey(fk_target(SCHEMA, "preference_profiles.id"), ondelete="CASCADE"), nullable=False, index=True
     )
     university_id: Mapped[int | None] = mapped_column(
-        ForeignKey("reference.universities.id", ondelete="SET NULL")
+        ForeignKey(fk_literal("reference.universities.id"), ondelete="SET NULL")
     )
     # e.g. IS_985 / IS_211 / IS_DOUBLE_FIRST_CLASS / HAS_POSTGRAD / IS_PUBLIC
     trait: Mapped[str | None] = mapped_column(String(32))
@@ -315,7 +312,7 @@ class OtherPreference(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     preference_profile_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{SCHEMA}.preference_profiles.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey(fk_target(SCHEMA, "preference_profiles.id"), ondelete="CASCADE"), nullable=False, index=True
     )
     dimension: Mapped[str] = mapped_column(String(16), nullable=False)
     key: Mapped[str] = mapped_column(String(64), nullable=False)
