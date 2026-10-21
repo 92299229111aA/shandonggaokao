@@ -1,124 +1,180 @@
 "use client";
 
+/**
+ * P02 偏好画像｜意向与限制
+ *
+ * 这一页最容易做错的地方是把「倾向」和「必须满足」混成一个控件。
+ * 所以分成两组，并在界面上明说：
+ *   - 排序倾向（INCLUDE）：影响匹配分与排序，不排除其他候选
+ *   - 硬限制（EXCLUDE + is_hard_exclude）：真的会被过滤掉
+ *
+ * 另外两条底线：
+ *   - 「不限」与具体选择互斥
+ *   - 同一个地区不能既关注又排除；发生冲突时当场提示，而不是等推荐为空
+ */
+
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox, Input, Label } from "@/components/ui/input";
-import { catalogApi, metaApi, profileApi, recommendationApi } from "@/lib/api/endpoints";
+import { Icon } from "@/components/workbench/icon";
+import { useToast } from "@/components/workbench/toast";
+import { catalogApi, profileApi } from "@/lib/api/endpoints";
 import { errorMessage } from "@/lib/api/errors";
 import { useFlowState } from "@/lib/flow-state";
-import type { RiskMode } from "@/lib/api/types";
+import { riskModeLabel } from "@/lib/workbench-format";
+import { useWorkbench } from "@/lib/workbench-state";
 
-// Fallbacks only — the live lists come from /catalog/preference-options, which derives
-// them from the loaded snapshot. Hardcoding them here is what previously capped the
-// province list at 9 while the data held 31 provincial-level regions.
-const DISCIPLINES_FALLBACK = [
-  { code: "01", name: "哲学" },
-  { code: "02", name: "经济学" },
-  { code: "03", name: "法学" },
-  { code: "04", name: "教育学" },
-  { code: "05", name: "文学" },
-  { code: "06", name: "历史学" },
-  { code: "07", name: "理学" },
-  { code: "08", name: "工学" },
-  { code: "09", name: "农学" },
-  { code: "10", name: "医学" },
-  { code: "11", name: "军事学" },
-  { code: "12", name: "管理学" },
-  { code: "13", name: "艺术学" },
-  { code: "14", name: "交叉学科" },
-] as const;
-
-const PROVINCES_FALLBACK = [{ code: "37", name: "山东省" }] as const;
-
-const RISK_MODES: Array<{ value: RiskMode; label: string; detail: string }> = [
-  { value: "STEADY", label: "稳健", detail: "5 高冲 / 10 冲 / 15 边界 / 36 稳 / 30 保" },
-  { value: "BALANCED", label: "均衡", detail: "8 高冲 / 17 冲 / 20 边界 / 31 稳 / 20 保" },
-  { value: "AGGRESSIVE", label: "激进", detail: "15 高冲 / 25 冲 / 20 边界 / 24 稳 / 12 保" },
-];
-
-const CAREER_KEYS = [
-  { key: "POSTGRAD_RATE", label: "更看重读研/升学率" },
-  { key: "EMPLOYMENT_RATE", label: "更看重就业率" },
-  { key: "CITY_OPPORTUNITY", label: "更看重实习与就业城市机会" },
+const RISK_MODES = [
+  {
+    value: "STEADY",
+    label: "稳妥型",
+    detail: "优先关注相对安全的选择，仍需要看资格。",
+  },
+  {
+    value: "BALANCED",
+    label: "均衡型",
+    detail: "兼顾不同风险层，保留探索与安全储备。",
+    recommended: true,
+  },
+  {
+    value: "AGGRESSIVE",
+    label: "激进型",
+    detail: "愿意接受更多挑战项，注意整体结构。",
+  },
 ] as const;
 
 export default function PreferencesPage() {
   const router = useRouter();
-  const { state, update, loaded } = useFlowState();
+  const toast = useToast();
+  const wb = useWorkbench();
+  const { state: flow, update, loaded } = useFlowState();
 
-  const profile = useQuery({
-    queryKey: ["profile", state.profileId],
-    queryFn: () => profileApi.get(state.profileId!),
-    enabled: loaded && Boolean(state.profileId),
-  });
-  const dataset = useQuery({ queryKey: ["dataset"], queryFn: () => metaApi.dataset() });
-
-  const applicationLimit = dataset.data?.cycle?.application_limit ?? 96;
-
-  // Provinces and disciplines come from the data, not from a hardcoded list. The old
-  // list offered 9 provinces while the snapshot covers 31 provincial-level regions, so
-  // 地域偏好 could not even name 河北.
-  const preferenceOptions = useQuery({
+  const options = useQuery({
     queryKey: ["preference-options"],
     queryFn: () => catalogApi.preferenceOptions(),
+    enabled: loaded,
   });
 
-  const DISCIPLINES = preferenceOptions.data?.disciplines ?? DISCIPLINES_FALLBACK;
-  const PROVINCES = preferenceOptions.data?.provinces ?? PROVINCES_FALLBACK;
-  // Selecting a 学科 currently matches nothing: the plan files carry a per-school major
-  // sequence number, not an MOE major code, and no 门类 column exists. Say so rather
-  // than offer a control that silently does nothing.
-  const disciplinesAvailable =
-    preferenceOptions.data?.disciplines?.some((item) => item.available) ?? false;
-
-  const [riskMode, setRiskMode] = useState<RiskMode>("BALANCED");
-  const [targetCount, setTargetCount] = useState<number | null>(null);
-  const [maxTuition, setMaxTuition] = useState("");
-  const [excludeCooperative, setExcludeCooperative] = useState(false);
-  const [excludePrivate, setExcludePrivate] = useState(false);
-  const [minSafeCount, setMinSafeCount] = useState("");
-  const [includeDisciplines, setIncludeDisciplines] = useState<string[]>([]);
-  const [excludeMajors, setExcludeMajors] = useState("");
+  // 地区 / 专业：关注 与 排除 分开存
   const [includeProvinces, setIncludeProvinces] = useState<string[]>([]);
   const [excludeProvinces, setExcludeProvinces] = useState<string[]>([]);
+  const [includeDisciplines, setIncludeDisciplines] = useState<string[]>([]);
+  const [excludeMajors, setExcludeMajors] = useState("");
   const [trait985, setTrait985] = useState(false);
-  const [traitDoubleFirstClass, setTraitDoubleFirstClass] = useState(false);
-  const [careerKeys, setCareerKeys] = useState<string[]>([]);
+  const [trait211, setTrait211] = useState(false);
+  const [traitDfc, setTraitDfc] = useState(false);
+  const [tuitionMode, setTuitionMode] = useState<"none" | "limit">("none");
+  const [maxTuition, setMaxTuition] = useState("");
+  const [excludePrivate, setExcludePrivate] = useState(false);
+  const [excludeCooperative, setExcludeCooperative] = useState(false);
+  const [riskMode, setRiskMode] = useState<"STEADY" | "BALANCED" | "AGGRESSIVE">("BALANCED");
+  const [savedVersion, setSavedVersion] = useState<number | null>(null);
+  const hydrated = useRef(false);
 
-  useEffect(() => {
-    if (targetCount === null && dataset.data?.cycle) setTargetCount(dataset.data.cycle.application_limit);
-  }, [dataset.data?.cycle, targetCount]);
-
-  const effectiveTarget = useMemo(
-    () => Math.min(targetCount ?? applicationLimit, applicationLimit),
-    [targetCount, applicationLimit],
+  const provinces = useMemo(() => options.data?.provinces ?? [], [options.data]);
+  const disciplines = useMemo(
+    () => (options.data?.disciplines ?? []).filter((d) => d.available),
+    [options.data],
   );
 
-  const createPreference = useMutation({
-    mutationFn: () => {
-      const hardExcludeNames = excludeMajors
-        .split(/[,，\n]/)
+  // 已有偏好时回填（等偏好查询返回后再水合，避免和 P01 一样的竞态）
+  useEffect(() => {
+    if (!loaded || hydrated.current) return;
+    const pref = wb.preference;
+    if (!pref) {
+      if (flow.profileId && wb.loading) return;
+      hydrated.current = true;
+      return;
+    }
+    const loc = pref.location_preferences ?? [];
+    setIncludeProvinces(
+      loc.filter((p) => p.polarity === "INCLUDE").map((p) => p.province_code ?? "").filter(Boolean),
+    );
+    setExcludeProvinces(
+      loc.filter((p) => p.polarity === "EXCLUDE").map((p) => p.province_code ?? "").filter(Boolean),
+    );
+    setIncludeDisciplines(
+      (pref.major_preferences ?? [])
+        .filter((p) => p.polarity === "INCLUDE")
+        .map((p) => p.discipline_code ?? "")
+        .filter(Boolean),
+    );
+    setExcludeMajors(
+      (pref.major_preferences ?? [])
+        .filter((p) => p.polarity === "EXCLUDE")
+        .map((p) => p.major_name ?? "")
+        .filter(Boolean)
+        .join("、"),
+    );
+    const traits = new Set(
+      (pref.university_preferences ?? [])
+        .filter((p) => p.polarity === "INCLUDE")
+        .map((p) => p.trait),
+    );
+    setTrait985(traits.has("IS_985"));
+    setTrait211(traits.has("IS_211"));
+    setTraitDfc(traits.has("IS_DOUBLE_FIRST_CLASS"));
+    if (pref.max_tuition) {
+      setTuitionMode("limit");
+      setMaxTuition(String(pref.max_tuition));
+    }
+    setExcludePrivate(Boolean(pref.exclude_private));
+    setExcludeCooperative(Boolean(pref.exclude_cooperative));
+    setRiskMode((pref.risk_mode as typeof riskMode) || "BALANCED");
+    setSavedVersion(pref.version);
+    hydrated.current = true;
+  }, [loaded, wb.preference, wb.loading, flow.profileId]);
+
+  const tuitionValid =
+    tuitionMode === "none" || (/^\d+$/.test(maxTuition) && Number(maxTuition) > 0);
+
+  // 冲突：同一省份不能既关注又排除（点击时自动迁移，这里再兜一层）
+  const conflictProvinces = includeProvinces.filter((c) => excludeProvinces.includes(c));
+
+  const toggleProvince = (code: string, kind: "include" | "exclude") => {
+    if (kind === "include") {
+      if (includeProvinces.includes(code)) {
+        setIncludeProvinces(includeProvinces.filter((c) => c !== code));
+        return;
+      }
+      if (excludeProvinces.includes(code)) {
+        setExcludeProvinces(excludeProvinces.filter((c) => c !== code));
+        toast.show("该地区已从「明确排除」移到「优先关注」", "warn");
+      }
+      setIncludeProvinces([...includeProvinces, code]);
+      return;
+    }
+    if (excludeProvinces.includes(code)) {
+      setExcludeProvinces(excludeProvinces.filter((c) => c !== code));
+      return;
+    }
+    if (includeProvinces.includes(code)) {
+      setIncludeProvinces(includeProvinces.filter((c) => c !== code));
+      toast.show("该地区已从「优先关注」移到「明确排除」", "warn");
+    }
+    setExcludeProvinces([...excludeProvinces, code]);
+  };
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!flow.profileId) throw new Error("还没有档案，请先完成成绩与选科");
+      const excluded = excludeMajors
+        .split(/[,，、\n]/)
         .map((name) => name.trim())
         .filter(Boolean);
-      return profileApi.createPreference(state.profileId!, {
+      return profileApi.createPreference(flow.profileId, {
         risk_mode: riskMode,
-        target_count: effectiveTarget,
-        max_tuition: maxTuition ? Number(maxTuition) : null,
-        exclude_cooperative: excludeCooperative,
+        max_tuition: tuitionMode === "limit" ? Number(maxTuition) : null,
         exclude_private: excludePrivate,
-        min_safe_count: minSafeCount ? Number(minSafeCount) : null,
+        exclude_cooperative: excludeCooperative,
         major_preferences: [
           ...includeDisciplines.map((code) => ({
             discipline_code: code,
             polarity: "INCLUDE",
             weight: 80,
           })),
-          ...hardExcludeNames.map((name) => ({
+          ...excluded.map((name) => ({
             major_name: name,
             polarity: "EXCLUDE",
             is_hard_exclude: true,
@@ -128,13 +184,13 @@ export default function PreferencesPage() {
         location_preferences: [
           ...includeProvinces.map((code) => ({
             province_code: code,
-            province_name: PROVINCES.find((p) => p.code === code)?.name ?? null,
+            province_name: provinces.find((p) => p.code === code)?.name ?? null,
             polarity: "INCLUDE",
             weight: 70,
           })),
           ...excludeProvinces.map((code) => ({
             province_code: code,
-            province_name: PROVINCES.find((p) => p.code === code)?.name ?? null,
+            province_name: provinces.find((p) => p.code === code)?.name ?? null,
             polarity: "EXCLUDE",
             is_hard_exclude: true,
             weight: 100,
@@ -142,334 +198,440 @@ export default function PreferencesPage() {
         ],
         university_preferences: [
           ...(trait985 ? [{ trait: "IS_985", polarity: "INCLUDE", weight: 60 }] : []),
-          ...(traitDoubleFirstClass
-            ? [{ trait: "IS_DOUBLE_FIRST_CLASS", polarity: "INCLUDE", weight: 50 }]
-            : []),
+          ...(trait211 ? [{ trait: "IS_211", polarity: "INCLUDE", weight: 55 }] : []),
+          ...(traitDfc ? [{ trait: "IS_DOUBLE_FIRST_CLASS", polarity: "INCLUDE", weight: 50 }] : []),
         ],
-        other_preferences: careerKeys.map((key) => ({
-          dimension: "CAREER",
-          key,
-          weight: 60,
-          polarity: "INCLUDE",
-        })),
       });
     },
-    onSuccess: async (preference) => {
+    onSuccess: (preference) => {
       update({ preferenceId: preference.id });
-      // Generate the recommendation right away: the next page expects a session.
-      try {
-        const run = await recommendationApi.run({
-          profile_id: state.profileId!,
-          preference_id: preference.id,
-        });
-        update({ sessionId: run.session.id, inputWarnings: run.input_warnings ?? [] });
-        router.push("/recommendations");
-      } catch (error) {
-        setRunError(errorMessage(error));
-      }
+      setSavedVersion(preference.version);
+      toast.show("偏好已保存", "ok");
+      router.push("/recommendations");
     },
+    onError: (error) => toast.show(errorMessage(error), "error"),
   });
 
-  const [runError, setRunError] = useState<string | null>(null);
+  const onSaveOnly = () => {
+    if (!tuitionValid) {
+      toast.show("学费上限必须是正整数", "error");
+      return;
+    }
+    save.mutate();
+  };
 
-  if (loaded && !state.profileId) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>请先填写成绩与选科</CardTitle>
-          <CardDescription>偏好画像是基于你的档案建立的。</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button onClick={() => router.push("/onboarding/score")}>去填写成绩与选科</Button>
-        </CardContent>
-      </Card>
-    );
+
+  /** 恢复全部不限：只重置本页，不清档案与方案 */
+  function resetAll() {
+    setIncludeProvinces([]);
+    setExcludeProvinces([]);
+    setIncludeDisciplines([]);
+    setExcludeMajors("");
+    setTrait985(false);
+    setTrait211(false);
+    setTraitDfc(false);
+    setTuitionMode("none");
+    setMaxTuition("");
+    setExcludePrivate(false);
+    setExcludeCooperative(false);
+    setRiskMode("BALANCED");
+    toast.show("已恢复为全部不限（尚未保存）", "warn");
   }
 
+  const hardLimitCount =
+    excludeProvinces.length +
+    excludeMajors.split(/[,，、\n]/).filter((s) => s.trim()).length +
+    (tuitionMode === "limit" ? 1 : 0) +
+    (excludePrivate ? 1 : 0) +
+    (excludeCooperative ? 1 : 0);
+
   return (
-    <div className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-xl font-semibold">第 2 步 · 偏好画像</h1>
-        <p className="text-sm text-muted-foreground">
-          偏好只影响「你有多想去」的排序，不会覆盖选科等硬性报考条件。
-          标为「硬性排除」的条件在任何情况下都不会被推荐。
-        </p>
-      </header>
+    <>
+      <div className="page-head">
+        <div>
+          <div className="eyebrow">STEP 02 / PREFERENCES</div>
+          <h1>偏好画像</h1>
+          <p className="page-sub">让选择更贴近你的意向，同时把不能接受的条件说清楚。</p>
+        </div>
+        <div className="row gap8">
+          <button type="button" className="btn" onClick={() => resetAll()}>
+            <Icon name="refresh" /> 恢复不限
+          </button>
+        </div>
+      </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>风险偏好</CardTitle>
-            <CardDescription>风险层目标是软约束；最低安全数量是硬约束</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              {RISK_MODES.map((mode) => (
+      {conflictProvinces.length > 0 ? (
+        <div className="stale-banner" style={{ marginBottom: 18 }}>
+          <Icon name="warn" />
+          <span>
+            这些地区同时出现在「优先关注」和「明确排除」里：{conflictProvinces.join("、")}。
+            保存前需要只保留一边。
+          </span>
+        </div>
+      ) : null}
+
+      <div className="form-layout">
+        <div>
+          <div className="card">
+            {/* ---- 01 地区 ---- */}
+            <section className="form-block">
+              <div className="block-title">
+                <span className="section-number">01</span>
+                <h2>想去哪些地区？</h2>
+                <span className="pill blue push">排序倾向</span>
+              </div>
+              <p className="small muted">优先展示这些地区，不会因此排除其他候选。</p>
+              <div className="chips mt16">
                 <button
-                  key={mode.value}
                   type="button"
-                  onClick={() => setRiskMode(mode.value)}
-                  className={`w-full rounded-md border p-3 text-left transition-colors ${
-                    riskMode === mode.value ? "border-primary bg-accent" : "border-input hover:bg-accent/60"
-                  }`}
+                  className="choice"
+                  aria-pressed={includeProvinces.length === 0}
+                  onClick={() => setIncludeProvinces([])}
                 >
-                  <div className="text-sm font-medium">{mode.label}</div>
-                  <div className="text-xs text-muted-foreground">{mode.detail}</div>
+                  不限
                 </button>
-              ))}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="targetCount">目标志愿数量（上限 {applicationLimit}）</Label>
-              <Input
-                id="targetCount"
-                type="number"
-                min={1}
-                max={applicationLimit}
-                value={effectiveTarget}
-                onChange={(event) => setTargetCount(Number(event.target.value))}
-              />
-              {targetCount !== null && targetCount > applicationLimit ? (
-                <p className="text-xs text-destructive">
-                  超过政策上限，已调整为 {applicationLimit}（来自 admission_cycles）
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="minSafeCount">最低安全数量（稳+保，可留空）</Label>
-              <Input
-                id="minSafeCount"
-                type="number"
-                min={0}
-                value={minSafeCount}
-                onChange={(event) => setMinSafeCount(event.target.value)}
-                placeholder="例如 20"
-              />
-              <p className="text-xs text-muted-foreground">
-                资格待确认（UNKNOWN）的志愿不会被计入安全数量。
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>专业与学费</CardTitle>
-            <CardDescription>专业偏好权重 35%，学费权重 10%</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>偏好的学科门类</Label>
-              {preferenceOptions.data ? (
-                <p className="text-xs text-muted-foreground">
-                  {disciplinesAvailable
-                    ? "按专业所属门类匹配，权重 35%。未填则不参与计算（不会按 0 分处理）。"
-                    : "当前数据源缺少学科门类映射，选学科暂不影响结果，请改用下方「绝不接受的专业」。"}
-                </p>
-              ) : null}
-              <div className="flex flex-wrap gap-2">
-                {DISCIPLINES.map((discipline) => {
-                  const active = includeDisciplines.includes(discipline.code);
-                  return (
-                    <button
-                      key={discipline.code}
-                      type="button"
-                      onClick={() =>
-                        setIncludeDisciplines((previous) =>
-                          active
-                            ? previous.filter((code) => code !== discipline.code)
-                            : [...previous, discipline.code],
-                        )
-                      }
-                      className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
-                        active ? "border-primary bg-primary text-primary-foreground" : "border-input hover:bg-accent"
-                      }`}
-                    >
-                      {discipline.name}
-                    </button>
-                  );
-                })}
+                {provinces.map((province) => (
+                  <button
+                    key={province.code}
+                    type="button"
+                    className="choice"
+                    aria-pressed={includeProvinces.includes(province.code)}
+                    onClick={() => toggleProvince(province.code, "include")}
+                    title={`${province.university_count} 所院校`}
+                  >
+                    {province.name}
+                    {province.is_home ? <span className="tag">本省</span> : null}
+                  </button>
+                ))}
               </div>
-            </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="excludeMajors">绝不接受的专业（硬性排除，逗号分隔）</Label>
-              <Input
-                id="excludeMajors"
-                value={excludeMajors}
-                onChange={(event) => setExcludeMajors(event.target.value)}
-                placeholder="例如：临床医学, 护理学"
-              />
-              <p className="text-xs text-muted-foreground">
-                按专业名称匹配（整名或以括号等分隔符结尾），命中后永不进入方案。
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="maxTuition">学费上限（元/年）</Label>
-              <Input
-                id="maxTuition"
-                type="number"
-                min={0}
-                value={maxTuition}
-                onChange={(event) => setMaxTuition(event.target.value)}
-                placeholder="例如 8000"
-              />
-            </div>
-
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={excludeCooperative}
-                onChange={(event) => setExcludeCooperative(event.target.checked)}
-              />
-              不接受中外合作办学
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={excludePrivate} onChange={(event) => setExcludePrivate(event.target.checked)} />
-              不接受民办院校
-            </label>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>地域与学校</CardTitle>
-            <CardDescription>地域权重 15%，学校权重 15%，升学特征 10%</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>优先考虑的省份</Label>
-              <p className="text-xs text-muted-foreground">
-                {preferenceOptions.data
-                  ? `${PROVINCES.length} 个省级行政区（按当前数据中可报院校数量排序）`
-                  : "正在读取省份列表…"}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {PROVINCES.map((province) => {
-                  const active = includeProvinces.includes(province.code);
-                  return (
-                    <button
-                      key={province.code}
-                      type="button"
-                      onClick={() =>
-                        setIncludeProvinces((previous) =>
-                          active
-                            ? previous.filter((code) => code !== province.code)
-                            : [...previous, province.code],
-                        )
-                      }
-                      className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
-                        active ? "border-primary bg-primary text-primary-foreground" : "border-input hover:bg-accent"
-                      }`}
-                    >
-                      {province.name}
-                      {"university_count" in province ? (
-                        <span className="ml-1 opacity-70">{province.university_count}</span>
-                      ) : null}
-                    </button>
-                  );
-                })}
+              <div className="block-title mt24">
+                <h3>明确排除的地区</h3>
+                <span className="pill warn">硬限制</span>
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>绝不考虑的省份（硬性排除）</Label>
-              <div className="flex flex-wrap gap-2">
-                {PROVINCES.map((province) => {
-                  const active = excludeProvinces.includes(province.code);
-                  return (
-                    <button
-                      key={province.code}
-                      type="button"
-                      onClick={() =>
-                        setExcludeProvinces((previous) =>
-                          active
-                            ? previous.filter((code) => code !== province.code)
-                            : [...previous, province.code],
-                        )
-                      }
-                      className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
-                        active
-                          ? "border-destructive bg-destructive text-destructive-foreground"
-                          : "border-input hover:bg-accent"
-                      }`}
-                    >
-                      {province.name}
-                    </button>
-                  );
-                })}
+              <p className="small muted">
+                排除地区不会出现在更新后的候选中；已加入方案的会保留并提示复核。
+              </p>
+              <div className="chips mt16">
+                <button
+                  type="button"
+                  className="choice"
+                  aria-pressed={excludeProvinces.length === 0}
+                  onClick={() => setExcludeProvinces([])}
+                >
+                  不排除
+                </button>
+                {provinces.map((province) => (
+                  <button
+                    key={province.code}
+                    type="button"
+                    className="choice exclude"
+                    aria-pressed={excludeProvinces.includes(province.code)}
+                    onClick={() => toggleProvince(province.code, "exclude")}
+                  >
+                    {province.name}
+                  </button>
+                ))}
               </div>
-            </div>
+            </section>
 
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={trait985} onChange={(event) => setTrait985(event.target.checked)} />
-              优先 985 院校
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={traitDoubleFirstClass}
-                onChange={(event) => setTraitDoubleFirstClass(event.target.checked)}
-              />
-              优先双一流院校
-            </label>
-
-            <div className="space-y-2">
-              <Label>职业与升学倾向</Label>
-              {CAREER_KEYS.map((item) => (
-                <label key={item.key} className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={careerKeys.includes(item.key)}
-                    onChange={(event) =>
-                      setCareerKeys((previous) =>
-                        event.target.checked
-                          ? [...previous, item.key]
-                          : previous.filter((key) => key !== item.key),
+            {/* ---- 02 专业 ---- */}
+            <section className="form-block">
+              <div className="block-title">
+                <span className="section-number">02</span>
+                <h2>更感兴趣的专业</h2>
+                <span className="pill blue push">排序倾向</span>
+              </div>
+              <p className="small muted">
+                按专业门类选择，比填具体专业名称更稳（年度间专业名称会变）。
+              </p>
+              <div className="chips mt16">
+                <button
+                  type="button"
+                  className="choice"
+                  aria-pressed={includeDisciplines.length === 0}
+                  onClick={() => setIncludeDisciplines([])}
+                >
+                  不限
+                </button>
+                {disciplines.map((discipline) => (
+                  <button
+                    key={discipline.code}
+                    type="button"
+                    className="choice"
+                    aria-pressed={includeDisciplines.includes(discipline.code)}
+                    onClick={() =>
+                      setIncludeDisciplines(
+                        includeDisciplines.includes(discipline.code)
+                          ? includeDisciplines.filter((c) => c !== discipline.code)
+                          : [...includeDisciplines, discipline.code],
                       )
                     }
-                  />
-                  {item.label}
+                  >
+                    {discipline.name}
+                  </button>
+                ))}
+              </div>
+
+              <div className="field mt24">
+                <label htmlFor="exclude-majors">
+                  明确排除的专业 <span className="pill warn">硬限制</span>
                 </label>
-              ))}
+                <input
+                  id="exclude-majors"
+                  className="input"
+                  value={excludeMajors}
+                  onChange={(event) => setExcludeMajors(event.target.value)}
+                  placeholder="用顿号或逗号分隔，例如：护理学、学前教育"
+                />
+                <span className="field-hint">
+                  按专业名称匹配，设了就会被真的过滤掉，不是只影响排序。
+                </span>
+              </div>
+            </section>
+
+            {/* ---- 03 院校 ---- */}
+            <section className="form-block">
+              <div className="block-title">
+                <span className="section-number">03</span>
+                <h2>院校层次</h2>
+                <span className="pill blue push">排序倾向</span>
+              </div>
+              <p className="small muted">
+                985 / 211 / 双一流是<strong>有重叠</strong>的标签，不是互斥等级，可以同时选。
+              </p>
+              <div className="chips mt16">
+                <button
+                  type="button"
+                  className="choice"
+                  aria-pressed={trait985}
+                  onClick={() => setTrait985(!trait985)}
+                >
+                  优先 985
+                </button>
+                <button
+                  type="button"
+                  className="choice"
+                  aria-pressed={trait211}
+                  onClick={() => setTrait211(!trait211)}
+                >
+                  优先 211
+                </button>
+                <button
+                  type="button"
+                  className="choice"
+                  aria-pressed={traitDfc}
+                  onClick={() => setTraitDfc(!traitDfc)}
+                >
+                  优先双一流
+                </button>
+              </div>
+            </section>
+
+            {/* ---- 04 费用与项目 ---- */}
+            <section className="form-block">
+              <div className="block-title">
+                <span className="section-number">04</span>
+                <h2>费用与接受范围</h2>
+              </div>
+              <div className="field">
+                <label>年度学费上限</label>
+                <div className="row gap8">
+                  <button
+                    type="button"
+                    className="choice"
+                    aria-pressed={tuitionMode === "none"}
+                    onClick={() => {
+                      setTuitionMode("none");
+                      setMaxTuition("");
+                    }}
+                  >
+                    不限
+                  </button>
+                  <button
+                    type="button"
+                    className="choice"
+                    aria-pressed={tuitionMode === "limit"}
+                    onClick={() => setTuitionMode("limit")}
+                  >
+                    设置上限
+                  </button>
+                  {tuitionMode === "limit" ? (
+                    <input
+                      className={`input num${tuitionValid ? "" : " is-error"}`}
+                      style={{ width: 160 }}
+                      value={maxTuition}
+                      inputMode="numeric"
+                      placeholder="例如 8000"
+                      onChange={(event) => setMaxTuition(event.target.value)}
+                    />
+                  ) : null}
+                </div>
+                <span className="field-hint">
+                  空值表示不限，不是 0。未知费用不当作免费，也不当作满足预算。
+                </span>
+                {!tuitionValid ? (
+                  <span className="field-error" role="alert">
+                    学费上限必须是正整数
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="attribute-list mt16">
+                <label className="attribute-row">
+                  <input
+                    type="checkbox"
+                    checked={excludeCooperative}
+                    onChange={(event) => setExcludeCooperative(event.target.checked)}
+                  />
+                  <span>不接受中外合作办学 / 港澳台合作项目</span>
+                </label>
+                <label className="attribute-row">
+                  <input
+                    type="checkbox"
+                    checked={excludePrivate}
+                    onChange={(event) => setExcludePrivate(event.target.checked)}
+                  />
+                  <span>不接受民办院校</span>
+                </label>
+              </div>
+              <p className="legal-mini mt8">
+                这两项只在数据里有可靠标记时生效，不会因为学费高就推断成合作办学。
+              </p>
+            </section>
+
+            {/* ---- 05 风险策略 ---- */}
+            <section className="form-block">
+              <div className="block-title">
+                <span className="section-number">05</span>
+                <h2>风险策略</h2>
+              </div>
+              <div className="strategy-grid">
+                {RISK_MODES.map((mode) => (
+                  <button
+                    key={mode.value}
+                    type="button"
+                    className="strategy"
+                    aria-pressed={riskMode === mode.value}
+                    onClick={() => setRiskMode(mode.value)}
+                  >
+                    <strong>
+                      {mode.label}
+                      {"recommended" in mode && mode.recommended ? (
+                        <span className="pill blue">默认</span>
+                      ) : null}
+                    </strong>
+                    <p>{mode.detail}</p>
+                  </button>
+                ))}
+              </div>
+              <p className="legal-mini mt8">
+                策略影响五档的构成倾向，不承诺录取概率，也不改变 ACS 的计算方式。
+              </p>
+            </section>
+          </div>
+
+          <div className="form-actions">
+            <span className="small muted">
+              <Icon name="info" />
+              {savedVersion ? `当前偏好 v${savedVersion}` : "保存后才会用于推荐"}
+            </span>
+            <div className="row">
+              <button type="button" className="btn" onClick={onSaveOnly} disabled={save.isPending}>
+                保存偏好
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                onClick={onSaveOnly}
+                disabled={save.isPending}
+              >
+                {save.isPending ? "保存中…" : "保存并查看推荐"}
+                <Icon name="arrow" />
+              </button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+
+        <aside className="stack summary-aside summary-sticky">
+          <div className="card">
+            <div className="card-head">
+              <h2>你的偏好摘要</h2>
+              <Icon name="prefs" />
+            </div>
+            <div className="card-body">
+              <div className="kv">
+                <div className="kv-line">
+                  <span>优先关注的地区</span>
+                  <span>
+                    {includeProvinces.length > 0
+                      ? includeProvinces
+                          .map((code) => provinces.find((p) => p.code === code)?.name)
+                          .filter(Boolean)
+                          .join("、")
+                      : "不限"}
+                  </span>
+                </div>
+                <div className="kv-line">
+                  <span>优先关注的专业</span>
+                  <span>
+                    {includeDisciplines.length > 0
+                      ? includeDisciplines
+                          .map((code) => disciplines.find((d) => d.code === code)?.name)
+                          .filter(Boolean)
+                          .join("、")
+                      : "不限"}
+                  </span>
+                </div>
+                <div className="kv-line">
+                  <span>明确排除</span>
+                  <span>
+                    {[
+                      excludeProvinces.length > 0 ? `${excludeProvinces.length} 个地区` : null,
+                      excludeMajors.trim() ? "排除专业" : null,
+                      excludePrivate ? "民办" : null,
+                      excludeCooperative ? "合作办学" : null,
+                    ]
+                      .filter(Boolean)
+                      .join("、") || "无"}
+                  </span>
+                </div>
+                <div className="kv-line">
+                  <span>学费上限</span>
+                  <span>
+                    {tuitionMode === "limit" && tuitionValid
+                      ? `${Number(maxTuition).toLocaleString("zh-CN")} 元/年`
+                      : "不限"}
+                  </span>
+                </div>
+                <div className="kv-line">
+                  <span>风险策略</span>
+                  <span>{riskModeLabel(riskMode)}</span>
+                </div>
+                <div className="kv-line">
+                  <span>硬限制条数</span>
+                  <span className="num">{hardLimitCount}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-body">
+              <div className="row small" style={{ color: "#627b9f" }}>
+                <Icon name="info" />
+                <span>倾向与硬限制不一样</span>
+              </div>
+              <p className="legal-mini mt8">
+                「优先关注」只影响排序，不排除其他候选；「明确排除」会真的过滤掉。
+              </p>
+              <p className="legal-mini mt8">
+                保存偏好不会自动改写已编排的方案，但旧推荐会标记为需更新。
+              </p>
+            </div>
+          </div>
+        </aside>
       </div>
-
-      {profile.data ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">将使用的考生档案</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2 text-xs">
-            <Badge variant="outline">位次 {profile.data.rank?.toLocaleString("zh-CN") ?? "—"}</Badge>
-            <Badge variant="outline">总分 {profile.data.score ?? "—"}</Badge>
-            <Badge variant="outline">选科 {profile.data.subjects.join(" / ")}</Badge>
-            <Badge variant="outline">档案版本 v{profile.data.version}</Badge>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {createPreference.isError || runError ? (
-        <p className="rounded-md border border-destructive px-3 py-2 text-sm text-destructive">
-          {runError ?? errorMessage(createPreference.error)}
-        </p>
-      ) : null}
-
-      <div className="flex items-center gap-3">
-        <Button
-          disabled={createPreference.isPending || !state.profileId}
-          onClick={() => {
-            setRunError(null);
-            createPreference.mutate();
-          }}
-        >
-          {createPreference.isPending ? "生成推荐中…" : "保存偏好并生成推荐"}
-        </Button>
-        <span className="text-xs text-muted-foreground">
-          推荐会锁定档案版本、偏好版本、数据快照、政策版本与模型版本，可随时回溯。
-        </span>
-      </div>
-    </div>
+    </>
   );
 }

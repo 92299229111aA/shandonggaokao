@@ -287,12 +287,22 @@ export function useWorkbench(): WorkbenchState {
     enabled: loaded && Boolean(profileId),
   });
 
-  const preference = useQuery({
+  // 用列表接口而不是 /latest：新档案还没有偏好时 /latest 返回 404，
+  // 会在每次打开页面时留下一条控制台错误，且容易被误读成"接口挂了"。
+  // 列表接口返回空数组，语义更准确。
+  const preferenceList = useQuery({
     queryKey: ["wb", "preference", profileId],
-    queryFn: () => profileApi.latestPreference(profileId!),
+    queryFn: () => profileApi.preferences(profileId!),
     enabled: loaded && Boolean(profileId),
-    retry: false,
   });
+
+  const preference = {
+    ...preferenceList,
+    data:
+      preferenceList.data && preferenceList.data.length > 0
+        ? [...preferenceList.data].sort((a, b) => b.version - a.version)[0]
+        : null,
+  };
 
   const session = useQuery({
     queryKey: ["wb", "session", flow.sessionId],

@@ -499,8 +499,8 @@ input[type="checkbox"] { accent-color: var(--blue); width: 15px; height: 15px; }
 }
 .stale-banner strong { font-weight: 650; }
 
-/* 筛选项（已生效条件）逐项移除 */
-.filter-chip {
+/* 已生效筛选项（可逐项移除） */
+.active-filter {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -512,7 +512,7 @@ input[type="checkbox"] { accent-color: var(--blue); width: 15px; height: 15px; }
   font-size: 12px;
   color: var(--ink);
 }
-.filter-chip button {
+.active-filter button {
   border: 0;
   background: transparent;
   color: var(--muted);
@@ -520,7 +520,7 @@ input[type="checkbox"] { accent-color: var(--blue); width: 15px; height: 15px; }
   line-height: 1;
   font-size: 14px;
 }
-.filter-chip button:hover { color: var(--red); }
+.active-filter button:hover { color: var(--red); }
 
 /* ---- 外壳补充：参考稿里由 JS 内联样式承担的部分 ---- */
 
@@ -577,3 +577,75 @@ input[type="checkbox"] { accent-color: var(--blue); width: 15px; height: 15px; }
 .legend-dot.b3 { background: var(--bar-3); }
 .legend-dot.b4 { background: var(--bar-4); }
 
+
+/* 两栏布局：两列的行高不要互相拉平，否则较短那一列会出现大片空白 */
+.home-grid > .stack,
+.report-layout > .stack { align-content: start; }
+
+/* ---- P01 补充：选科替换确认 + 资格补充清单 ---- */
+
+/* 选满 3 科后再点其他科目，先在这里确认替换哪一科 */
+.replace-prompt {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid #e8dcb0;
+  background: var(--gold-bg);
+  border-radius: 10px;
+  color: #6f5a15;
+}
+
+.attribute-list {
+  display: grid;
+  gap: 10px;
+}
+.attribute-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+  line-height: 1.5;
+}
+.attribute-row input {
+  margin-top: 2px;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--blue);
+  flex: none;
+}
+
+/* 选中的科目：用边框 + 淡底，不只靠勾 */
+.subject.selected {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  box-shadow: inset 0 0 0 1px var(--blue);
+}
+.subject.selected span:first-child {
+  color: var(--blue-dark);
+  font-weight: 600;
+}
+.pick-circle {
+  display: grid;
+  place-items: center;
+}
+.pick-circle .ico {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.6;
+  color: var(--blue);
+}
+
+/* 输入错误态 */
+.input.is-error,
+.select.is-error {
+  border-color: var(--red);
+  background: var(--red-bg);
+}
+.field-error {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--red);
+}
