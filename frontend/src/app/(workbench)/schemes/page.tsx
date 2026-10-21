@@ -28,7 +28,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -58,6 +58,10 @@ export default function SchemeEditorPage() {
   const [minSafe, setMinSafe] = useState("");
   const [optimizeOpen, setOptimizeOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  // 体检报告「定位到编辑器」通过 ?focus=<recommendation_item_id> 传入稳定 ID
+  const searchParams = useSearchParams();
+  const focusId = Number(searchParams.get("focus")) || null;
+  const [highlightId, setHighlightId] = useState<number | null>(focusId);
 
   // 候选池筛选（后端）
   const [poolSearch, setPoolSearch] = useState("");
@@ -297,6 +301,33 @@ export default function SchemeEditorPage() {
     },
     [items, reorder, schemeFiltered],
   );
+
+  // 定位：目标可能被方案内筛选藏起来，先清筛选再滚动过去。
+  // 只用稳定 ID，不用序号 —— 序号在方案变动后会漂移。
+  useEffect(() => {
+    if (!focusId || items.length === 0) return;
+    const target = items.find((item) => item.recommendation_item_id === focusId);
+    if (!target) {
+      setHighlightId(null);
+      return;
+    }
+    setSchemeBucket("");
+    setSchemeProvince("");
+    setSchemeUniversity("");
+    setSchemeSearch("");
+    setSchemeOnlyUnlocked(false);
+    setHighlightId(focusId);
+    const timer = setTimeout(() => {
+      document
+        .querySelector(`[data-item-id="${focusId}"]`)
+        ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 120);
+    const clear = setTimeout(() => setHighlightId(null), 3600);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(clear);
+    };
+  }, [focusId, items]);
 
   // ---- 缺方案 ----
   if (loaded && !wb.loading && !flow.schemeId) {
@@ -789,6 +820,7 @@ export default function SchemeEditorPage() {
                       }
                       onRemove={() => removeItem.mutate(item.position)}
                       index={index}
+                      highlighted={highlightId === item.recommendation_item_id}
                     />
                   ))}
                 </div>
@@ -834,6 +866,7 @@ function SchemeRow({
   onMoveDown,
   onToggleLock,
   onRemove,
+  highlighted,
 }: {
   item: SchemeItem;
   isFirst: boolean;
@@ -845,6 +878,7 @@ function SchemeRow({
   onToggleLock: () => void;
   onRemove: () => void;
   index: number;
+  highlighted?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.recommendation_item_id,
@@ -854,8 +888,9 @@ function SchemeRow({
   return (
     <div
       ref={setNodeRef}
+      data-item-id={item.recommendation_item_id}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`scheme-row${isDragging ? " highlight" : ""}`}
+      className={`scheme-row${isDragging || highlighted ? " highlight" : ""}`}
     >
       <button
         type="button"

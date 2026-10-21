@@ -141,9 +141,14 @@ export const schemeApi = {
   optimize: (id: number, body: { version: number; risk_mode?: RiskMode; target_count?: number; min_safe_count?: number | null }) =>
     apiFetch<Scheme>(`/schemes/${id}/optimize`, { method: "POST", body }),
   exportRows: (id: number, versionNo?: number) =>
-    apiFetch<{ rows: Array<Record<string, unknown>>; disclaimer: string; application_limit: number | null }>(
-      `/schemes/${id}/export${buildQuery({ version_no: versionNo })}`,
-    ),
+    apiFetch<{
+      scheme_id: number;
+      version_no: number;
+      target_count: number;
+      application_limit: number | null;
+      disclaimer: string;
+      rows: Array<Record<string, unknown>>;
+    }>(`/schemes/${id}/export${buildQuery({ version_no: versionNo })}`),
 };
 
 export const healthApi = {

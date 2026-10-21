@@ -28,6 +28,8 @@ class HealthCheckCheckDTO(BaseModel):
     errors: int = 0
     warnings: int = 0
     infos: int = 0
+    # 这一项检查产出的 issue code，前端据此区分「未通过」与「待核验」
+    issue_codes: list[str] = Field(default_factory=list)
 
 
 class HealthCheckDTO(BaseModel):

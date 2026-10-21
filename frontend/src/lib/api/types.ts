@@ -364,5 +364,14 @@ export interface HealthCheck {
   disclaimer: string;
   summary: Record<string, unknown>;
   issues: HealthIssue[];
-  checks: Array<{ code: string; title: string; passed: boolean; errors: number; warnings: number; infos: number }>;
+  checks: Array<{
+    code: string;
+    title: string;
+    passed: boolean;
+    errors: number;
+    warnings: number;
+    infos: number;
+    /** 这一项产出的 issue code，用来区分「未通过」与「待核验」 */
+    issue_codes: string[];
+  }>;
 }

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.common.errors import NotFoundError
 from app.healthcheck.assembly import build_context
 from app.healthcheck.engine import HealthCheckEngine, HealthCheckReport
-from app.healthcheck.schemas import HealthCheckDTO, HealthCheckIssueDTO
+from app.healthcheck.schemas import HealthCheckCheckDTO, HealthCheckDTO, HealthCheckIssueDTO
 from app.recommendation.models import HealthCheck, HealthCheckIssue
 
 HEALTH_DISCLAIMER = (
@@ -86,7 +86,31 @@ class HealthCheckService:
         dto.scheme_version_id = version_id
         self.session.refresh(row)
         dto.created_at = row.created_at
+        dto.checks = self._checks_from_summary(row.summary)
         return dto
+
+
+    @staticmethod
+    def _checks_from_summary(summary: dict | None) -> list[HealthCheckCheckDTO]:
+        """从报告摘要还原逐项检查结果。
+
+        报告落库时把逐项结果存进了 summary（见 engine.run），这里读回来，
+        这样 get() 与 list_for_scheme() 也能给出"哪几项跑了、通过没有"。
+        """
+        detail = (summary or {}).get("checks_detail") or []
+        return [
+            HealthCheckCheckDTO(
+                code=item.get("code", ""),
+                title=item.get("title", ""),
+                passed=bool(item.get("passed")),
+                errors=int(item.get("errors") or 0),
+                warnings=int(item.get("warnings") or 0),
+                infos=int(item.get("infos") or 0),
+                issue_codes=list(item.get("issue_codes") or []),
+            )
+            for item in detail
+            if isinstance(item, dict)
+        ]
 
     def get(self, check_id: int) -> HealthCheckDTO:
         row = self.session.get(HealthCheck, check_id)
@@ -115,6 +139,7 @@ class HealthCheckService:
             disclaimer=HEALTH_DISCLAIMER,
             summary=row.summary or {},
             issues=[self._issue_dto(issue) for issue in issues],
+            checks=self._checks_from_summary(row.summary),
         )
 
 

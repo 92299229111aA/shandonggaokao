@@ -91,6 +91,25 @@ class HealthCheckEngine:
                 for check in results
                 if any(issue.severity is HealthSeverity.ERROR for issue in check.issues)
             ],
+            # 逐项结果随报告一起持久化：否则 get() 从库里读回来时只能看到 issues，
+            # 还原不出"哪几项检查执行了、通过没有"。
+            "checks_detail": [
+                {
+                    "code": result.code,
+                    "title": result.title,
+                    "passed": result.passed,
+                    "errors": sum(
+                        1 for i in result.issues if i.severity is HealthSeverity.ERROR
+                    ),
+                    "warnings": sum(
+                        1 for i in result.issues if i.severity is HealthSeverity.WARNING
+                    ),
+                    "infos": sum(1 for i in result.issues if i.severity is HealthSeverity.INFO),
+                    # 记下这一项产出的 issue code，前端据此把"待核验"与"未通过"分开
+                    "issue_codes": sorted({i.code for i in result.issues}),
+                }
+                for result in results
+            ],
             "note": "本报告只做诊断，不会修改你的方案。",
         }
         return HealthCheckReport(
