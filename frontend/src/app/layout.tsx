@@ -1,30 +1,27 @@
 import type { Metadata } from "next";
 
-import { AppNav } from "@/components/app-nav";
 import { Providers } from "@/components/providers";
 
 import "./globals.css";
+import "./workbench.css";
 
 export const metadata: Metadata = {
-  title: "山东高考智能志愿系统 V1",
+  title: "山东高考智能志愿｜专业工作台",
   description:
-    "面向山东夏季高考普通类考生的志愿决策系统：资格过滤、录取安全指数、偏好建模与 96 志愿组合优化。",
+    "面向山东夏季高考普通类考生的志愿决策工作台：资格过滤、录取安全指数、偏好建模与 96 志愿组合优化。",
 };
 
+/**
+ * 根布局只负责字体、样式与全局 Provider。
+ *
+ * 外壳（顶栏 + 侧边栏 + 主区）放在 (workbench) 分组里，因为六页共用它，
+ * 而根布局还要能容纳未来不属于工作台的页面（例如独立的打印视图）。
+ */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN">
-      <body className="min-h-screen">
-        <Providers>
-          <AppNav />
-          <main className="container py-6">{children}</main>
-          <footer className="container border-t py-6 text-xs text-muted-foreground">
-            <p>
-              本系统输出的是决策辅助方案，不是录取保证。ACS（录取安全指数）反映历史数据下的录取安全程度，
-              不是录取概率。最终请以山东省教育招生考试院官方系统为准。
-            </p>
-          </footer>
-        </Providers>
+      <body>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

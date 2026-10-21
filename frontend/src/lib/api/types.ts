@@ -354,6 +354,8 @@ export interface HealthCheck {
   scheme_version_id: number | null;
   version_no: number | null;
   snapshot_id: number | null;
+  /** 报告生成时间。主页与体检页用它说明"这份报告是什么时候出的"。 */
+  created_at: string | null;
   score: number;
   error_count: number;
   warning_count: number;

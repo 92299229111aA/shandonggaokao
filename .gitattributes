@@ -1,0 +1,15 @@
+# 统一行尾：仓库内一律 LF。
+# 原因：推送脚本按磁盘原始字节上传，若磁盘是 CRLF 而索引是 LF，
+# 远程树与本地提交就对不上，推送"成功"但本地无法对齐。
+* text=auto eol=lf
+
+# 二进制文件不参与行尾转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.xls binary
+*.xlsx binary
+*.db binary

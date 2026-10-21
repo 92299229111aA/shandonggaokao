@@ -36,6 +36,9 @@ class HealthCheckDTO(BaseModel):
     scheme_version_id: int | None = None
     version_no: int | None = None
     snapshot_id: int | None = None
+    # 报告时间：主页与体检页都要显示"这份报告是什么时候出的"，
+    # 缺了它无法判断报告是否还对应现在的方案。
+    created_at: datetime | None = None
     score: int = Field(ge=0, le=100)
     error_count: int = 0
     warning_count: int = 0

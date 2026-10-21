@@ -84,6 +84,8 @@ class HealthCheckService:
             report, scheme_id=scheme_id, version_no=resolved_version_no, check_id=row.id
         )
         dto.scheme_version_id = version_id
+        self.session.refresh(row)
+        dto.created_at = row.created_at
         return dto
 
     def get(self, check_id: int) -> HealthCheckDTO:
@@ -101,8 +103,10 @@ class HealthCheckService:
             id=row.id,
             scheme_id=row.scheme_id,
             scheme_version_id=row.scheme_version_id,
-            version_no=None,
+            # 报告必须说明它检查的是哪个方案版本，前端据此判断是否过期。
+            version_no=self._version_no_of(row.scheme_version_id),
             snapshot_id=row.snapshot_id,
+            created_at=row.created_at,
             score=row.score,
             error_count=row.error_count,
             warning_count=row.warning_count,
@@ -112,6 +116,16 @@ class HealthCheckService:
             summary=row.summary or {},
             issues=[self._issue_dto(issue) for issue in issues],
         )
+
+
+    def _version_no_of(self, scheme_version_id: int | None) -> int | None:
+        """方案版本 id -> 版本号。报告要能说出"我检查的是 v几"。"""
+        if scheme_version_id is None:
+            return None
+        from app.recommendation.models import SchemeVersion
+
+        row = self.session.get(SchemeVersion, scheme_version_id)
+        return row.version_no if row is not None else None
 
     def list_for_scheme(self, scheme_id: int) -> list[HealthCheckDTO]:
         rows = self.session.execute(

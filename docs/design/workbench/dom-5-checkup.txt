@@ -1,0 +1,17 @@
+<div.stage>
+  <header.topbar>
+  <div.row>
+  <button.btn.icon.mobile-menu[type="button"][aria-label="打开导航"]></button><div.crumb>
+  <svg.ico><span></span><span></span><b></b></div></div><div.top-tools>
+  <span.small.muted.save-inline>
+  <span.row.gap8>
+  <i.top-dot></i></span></span><span.pill.year-tag></span><span.pill.blue></span></div></header><main.content>
+  <div.page-head>
+  <div>
+  <div.eyebrow></div><h1></h1><p.page-sub></p></div><div.row.gap8></div></div><section.card>
+  <div.empty>
+  <div.report-symbol>
+  <svg.ico></div><h2></h2><p.mt16>
+  <br></br></p><button.btn.primary[type="button"]>
+  <svg.ico></button><div.small.muted.mt16></div></div></section><footer.footer-note>
+  <span></span><span></span></footer></main></div>

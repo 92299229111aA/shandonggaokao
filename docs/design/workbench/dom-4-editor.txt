@@ -1,0 +1,127 @@
+<div.stage>
+  <header.topbar>
+  <div.row>
+  <button.btn.icon.mobile-menu[type="button"][aria-label="打开导航"]></button><div.crumb>
+  <svg.ico><span></span><span></span><b></b></div></div><div.top-tools>
+  <span.small.muted.save-inline>
+  <span.row.gap8>
+  <i.top-dot></i></span></span><span.pill.year-tag></span><span.pill.blue></span></div></header><main.content>
+  <div.page-head>
+  <div>
+  <div.eyebrow></div><h1></h1><p.page-sub></p></div><div.row.gap8>
+  <button.btn[type="button"]>
+  <svg.ico></button><button.btn.primary[type="button"]>
+  <svg.ico></button></div></div><div.card.reco-summary>
+  <div.mini-stat>
+  <small></small><b>
+  <span.pill></span></b></div><div.summary-divider></div><div.mini-stat>
+  <b.num>
+  <small></small></b><small></small></div><div>
+  <div.balance[role="img"][aria-label="方案构成：高冲1，冲1，边界1，稳2，保1"]>
+  <span></span><span></span><span></span><span></span><span></span></div><div.balance-legend>
+  <span>
+  <i.legend-dot></i><b.num></b></span><span>
+  <i.legend-dot></i><b.num></b></span><span>
+  <i.legend-dot></i><b.num></b></span><span>
+  <i.legend-dot></i><b.num></b></span><span>
+  <i.legend-dot></i><b.num></b></span></div></div><button.btn[type="button"]>
+  <svg.ico></button></div><div.editor-tabs>
+  <button.btn[type="button"]></button><button.btn.subtle[type="button"]></button></div><div.editor-grid>
+  <section.card.editor-panel.inactive>
+  <div.card-head>
+  <div>
+  <h2>
+  <span.small.muted></span></h2><small.muted></small></div><svg.ico></div><div.scheme-filters>
+  <div.search-row>
+  <div.searchbox>
+  <svg.ico><input.input[aria-label="搜索全部演示候选池"][type=text]></input></div><select.select[aria-label="候选池风险层"]>
+  <option></option><option></option><option></option><option></option><option></option><option></option></select></div></div><div>
+  <article.pool-row>
+  <div.row.between>
+  <div.school-name></div><span.risk.r4></span></div><div.major-name></div><div.row.between.mt8>
+  <span.small.muted.num></span><div.row.gap8>
+  <button.btn.tiny.quiet[type="button"]></button><button.btn.tiny.subtle[type="button"]>
+  <svg.ico></button></div></div></article><article.pool-row>
+  <div.row.between>
+  <div.school-name></div><span.risk.r4></span></div><div.major-name></div><div.row.between.mt8>
+  <span.small.muted.num></span><div.row.gap8>
+  <button.btn.tiny.quiet[type="button"]></button><button.btn.tiny.subtle[type="button"]>
+  <svg.ico></button></div></div></article><article.pool-row>
+  <div.row.between>
+  <div.school-name></div><span.risk.r0></span></div><div.major-name></div><div.row.between.mt8>
+  <span.small.muted.num></span><div.row.gap8>
+  <button.btn.tiny.quiet[type="button"]></button><button.btn.tiny.subtle[type="button"]>
+  <svg.ico></button></div></div></article><article.pool-row>
+  <div.row.between>
+  <div.school-name></div><span.risk.r3></span></div><div.major-name></div><div.row.between.mt8>
+  <span.small.muted.num></span><div.row.gap8>
+  <button.btn.tiny.quiet[type="button"]></button><button.btn.tiny.subtle[type="button"]>
+  <svg.ico></button></div></div></article><article.pool-row>
+  <div.row.between>
+  <div.school-name></div><span.risk.r0></span></div><div.major-name></div><div.row.between.mt8>
+  <span.small.muted.num></span><div.row.gap8>
+  <button.btn.tiny.quiet[type="button"]></button><button.btn.tiny.subtle[type="button"]>
+  <svg.ico></button></div></div></article></div><div.pager>
+  <span></span><div.row.gap8>
+  <button.btn.tiny[type="button"]></button><span.num></span><button.btn.tiny[type="button"]></button></div></div></section><section.card.editor-panel>
+  <div.card-head>
+  <div>
+  <h2>
+  <span.small.muted.num></span></h2><small.muted></small></div><span.pill.good></span></div><div.scheme-filters>
+  <div.search-row>
+  <div.searchbox>
+  <svg.ico><input.input[aria-label="搜索当前方案"][type=text]></input></div><select.select[aria-label="方案风险层"]>
+  <option></option><option></option><option></option><option></option><option></option><option></option></select></div><label.check-label.mt8>
+  <input[type="checkbox"][type=checkbox]></input></label><div></div></div><div>
+  <article.scheme-row>
+  <span.grip></span><span.index.num></span><div.school-info>
+  <button.text-link.school-name></button><div.major-name></div></div><span.risk.r0></span><div.scheme-score.num>
+  <b></b><small></small></div><div.scheme-acts>
+  <button.btn.icon[type="button"][aria-label="上移 湖南大学"]>
+  <svg.ico></button><button.btn.icon[type="button"][aria-label="下移 湖南大学"]>
+  <svg.ico></button><button.btn.icon.locked[type="button"][aria-label="解锁 湖南大学"]>
+  <svg.ico></button><button.btn.icon.danger[type="button"][aria-label="移除 湖南大学"]>
+  <svg.ico></button></div></article><article.scheme-row>
+  <span.grip></span><span.index.num></span><div.school-info>
+  <button.text-link.school-name></button><div.major-name></div></div><span.risk.r1></span><div.scheme-score.num>
+  <b></b><small></small></div><div.scheme-acts>
+  <button.btn.icon[type="button"][aria-label="上移 广西大学"]>
+  <svg.ico></button><button.btn.icon[type="button"][aria-label="下移 广西大学"]>
+  <svg.ico></button><button.btn.icon[type="button"][aria-label="锁定 广西大学"]>
+  <svg.ico></button><button.btn.icon.danger[type="button"][aria-label="移除 广西大学"]>
+  <svg.ico></button></div></article><article.scheme-row>
+  <span.grip></span><span.index.num></span><div.school-info>
+  <button.text-link.school-name></button><div.major-name></div></div><span.risk.r2></span><div.scheme-score.num>
+  <b></b><small></small></div><div.scheme-acts>
+  <button.btn.icon[type="button"][aria-label="上移 东北农业大学"]>
+  <svg.ico></button><button.btn.icon[type="button"][aria-label="下移 东北农业大学"]>
+  <svg.ico></button><button.btn.icon[type="button"][aria-label="锁定 东北农业大学"]>
+  <svg.ico></button><button.btn.icon.danger[type="button"][aria-label="移除 东北农业大学"]>
+  <svg.ico></button></div></article><article.scheme-row>
+  <span.grip></span><span.index.num></span><div.school-info>
+  <button.text-link.school-name></button><div.major-name></div></div><span.risk.r3></span><div.scheme-score.num>
+  <b></b><small></small></div><div.scheme-acts>
+  <button.btn.icon[type="button"][aria-label="上移 西南大学"]>
+  <svg.ico></button><button.btn.icon[type="button"][aria-label="下移 西南大学"]>
+  <svg.ico></button><button.btn.icon[type="button"][aria-label="锁定 西南大学"]>
+  <svg.ico></button><button.btn.icon.danger[type="button"][aria-label="移除 西南大学"]>
+  <svg.ico></button></div></article><article.scheme-row>
+  <span.grip></span><span.index.num></span><div.school-info>
+  <button.text-link.school-name></button><div.major-name></div></div><span.risk.r3></span><div.scheme-score.num>
+  <b></b><small></small></div><div.scheme-acts>
+  <button.btn.icon[type="button"][aria-label="上移 山东科技大学"]>
+  <svg.ico></button><button.btn.icon[type="button"][aria-label="下移 山东科技大学"]>
+  <svg.ico></button><button.btn.icon[type="button"][aria-label="锁定 山东科技大学"]>
+  <svg.ico></button><button.btn.icon.danger[type="button"][aria-label="移除 山东科技大学"]>
+  <svg.ico></button></div></article><article.scheme-row>
+  <span.grip></span><span.index.num></span><div.school-info>
+  <button.text-link.school-name></button><div.major-name></div></div><span.risk.r4></span><div.scheme-score.num>
+  <b></b><small></small></div><div.scheme-acts>
+  <button.btn.icon[type="button"][aria-label="上移 新疆大学"]>
+  <svg.ico></button><button.btn.icon[type="button"][aria-label="下移 新疆大学"]>
+  <svg.ico></button><button.btn.icon[type="button"][aria-label="锁定 新疆大学"]>
+  <svg.ico></button><button.btn.icon.danger[type="button"][aria-label="移除 新疆大学"]>
+  <svg.ico></button></div></article></div><div.card-footer>
+  <span></span><span.num></span></div></section></div><div.help-note>
+  <svg.ico><span></span></div><footer.footer-note>
+  <span></span><span></span></footer></main></div>
