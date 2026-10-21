@@ -1,0 +1,1435 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>山东高考智能志愿 · 设计稿 v1</title>
+<style>
+/* ============================================================
+   设计令牌 (design tokens)
+   方向：专业稳重（教育/政务风）
+   - 蓝灰主色，弱阴影，强数据层级
+   - 正文对比度 ≥ 4.5:1，大字号 ≥ 3:1
+   - 全部颜色为纯色，不使用渐变堆叠
+   ============================================================ */
+:root {
+  /* 品牌蓝：比原 #2563EB 更沉，降低饱和度换取"可信"而非"活泼" */
+  --brand-800: #10305C;
+  --brand-700: #163E75;
+  --brand-600: #1D4E89;   /* 主色：按钮、链接、选中态 */
+  --brand-500: #2A63A9;
+  --brand-100: #D9E6F6;
+  --brand-50:  #EEF3FA;
+
+  /* 中性色阶：slate 系，带轻微蓝调，与主色同族 */
+  --ink-900: #0F172A;     /* 标题 */
+  --ink-700: #334155;     /* 正文 */
+  --ink-600: #475569;     /* 次要正文 */
+  --ink-500: #64748B;     /* 辅助说明 */
+  --ink-400: #728297;     /* 仅图标/边框/禁用（3.9:1），不用于文字 */
+  --line-300: #CBD5E1;    /* 强边框 */
+  --line-200: #E2E8F0;    /* 常规边框 */
+  --line-100: #F1F5F9;    /* 分隔线、表头底 */
+  --surface: #FFFFFF;
+  --canvas: #F8FAFC;
+
+  /* 语义色：深一档，避免"鲜艳警告色"带来的廉价感 */
+  --success-700: #0F7B4F;
+  --success-50:  #ECFDF3;
+  --warning-700: #B45309;
+  --warning-50:  #FFFBEB;
+  --danger-700:  #B42318;
+  --danger-50:   #FEF3F2;
+  --info-700:    #1D4E89;
+  --info-50:     #EEF3FA;
+
+  /* 风险层五色：从"危"到"安"的单调递进，色相拉开，明度接近，
+     保证色盲用户也能靠文字与顺序区分（徽标永远带中文） */
+  --risk-high-bg:   #FEF3F2;  --risk-high-fg:   #B42318;  --risk-high-bd:  #F4C6C1;
+  --risk-reach-bg:  #FFF4ED;  --risk-reach-fg:  #C2410C;  --risk-reach-bd: #F6D3BE;
+  --risk-border-bg: #FEFCE8;  --risk-border-fg: #A16207;  --risk-border-bd:#EDE0A6;
+  --risk-stable-bg: #ECFEFF;  --risk-stable-fg: #0E7490;  --risk-stable-bd:#BFE6EE;
+  --risk-safe-bg:   #ECFDF3;  --risk-safe-fg:   #0F7B4F;  --risk-safe-bd:  #BCE5CE;
+
+  /* 间距节奏 4 的倍数 */
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
+  --s5: 24px; --s6: 32px; --s7: 48px; --s8: 64px;
+
+  /* 圆角：小控件 4，控件 6，卡片 8，胶囊 999 */
+  --r-sm: 4px; --r-md: 6px; --r-lg: 8px; --r-pill: 999px;
+
+  /* 阴影：极轻，靠边框而不是投影分离层次 */
+  --shadow-1: 0 1px 2px rgba(15, 23, 42, .04);
+  --shadow-2: 0 1px 3px rgba(15, 23, 42, .06), 0 1px 2px rgba(15, 23, 42, .04);
+  --shadow-focus: 0 0 0 3px rgba(29, 78, 137, .18);
+
+  --font: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "Source Han Sans SC",
+          "Noto Sans CJK SC", -apple-system, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--ink-700);
+  background: var(--canvas);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 数字统一等宽，保证表格列对齐 */
+.num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+
+/* ---------------- 设计稿外壳 ---------------- */
+.spec-head {
+  position: sticky; top: 0; z-index: 20;
+  background: var(--brand-800);
+  color: #fff;
+  padding: var(--s4) var(--s6);
+  display: flex; align-items: baseline; gap: var(--s4); flex-wrap: wrap;
+}
+.spec-head h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: .01em; }
+.spec-head .meta { font-size: 12px; color: #B7CBE6; }
+.spec-head nav { margin-left: auto; display: flex; gap: var(--s4); font-size: 12px; flex-wrap: wrap; }
+.spec-head nav a { color: #D9E6F6; text-decoration: none; border-bottom: 1px solid transparent; }
+.spec-head nav a:hover { border-bottom-color: #D9E6F6; }
+
+.wrap { max-width: 1440px; margin: 0 auto; padding: var(--s6) var(--s6) var(--s8); }
+
+.sec { margin-bottom: var(--s8); }
+.sec > h2 {
+  font-size: 20px; font-weight: 600; color: var(--ink-900);
+  margin: 0 0 var(--s2); padding-left: var(--s3);
+  border-left: 3px solid var(--brand-600);
+  line-height: 1.3;
+}
+.sec > .lead { margin: 0 0 var(--s5); color: var(--ink-500); font-size: 13px; }
+.sec h3 {
+  font-size: 14px; font-weight: 600; color: var(--ink-900);
+  margin: var(--s5) 0 var(--s3);
+}
+.sec h3:first-of-type { margin-top: 0; }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line-200);
+  border-radius: var(--r-lg);
+  padding: var(--s5);
+  box-shadow: var(--shadow-1);
+}
+.panel + .panel { margin-top: var(--s4); }
+
+.grid { display: grid; gap: var(--s4); }
+.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.g5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+
+/* ---------------- 色板 ---------------- */
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--s3); }
+.sw { border: 1px solid var(--line-200); border-radius: var(--r-md); overflow: hidden; background: #fff; }
+.sw .block { height: 54px; border-radius: 0; }
+.sw .info { padding: var(--s2) var(--s3) var(--s3); }
+.sw .name { font-size: 12px; color: var(--ink-700); font-weight: 600; }
+.sw .hex { font-size: 11px; color: var(--ink-500); font-variant-numeric: tabular-nums; }
+.sw .use { font-size: 11px; color: var(--ink-500); margin-top: 2px; }
+
+/* ---------------- 字号阶梯 ---------------- */
+.type-row {
+  display: flex; align-items: baseline; gap: var(--s5);
+  padding: var(--s3) 0; border-bottom: 1px dashed var(--line-200);
+}
+.type-row:last-child { border-bottom: 0; }
+.type-row .label { width: 150px; flex: none; font-size: 11px; color: var(--ink-500); font-variant-numeric: tabular-nums; }
+.type-row .sample { flex: 1; }
+
+.t-display { font-size: 28px; line-height: 1.25; font-weight: 600; color: var(--ink-900); letter-spacing: -.01em; }
+.t-h1 { font-size: 22px; line-height: 1.3; font-weight: 600; color: var(--ink-900); }
+.t-h2 { font-size: 16px; line-height: 1.4; font-weight: 600; color: var(--ink-900); }
+.t-body { font-size: 14px; line-height: 1.65; color: var(--ink-700); }
+.t-small { font-size: 13px; line-height: 1.6; color: var(--ink-600); }
+.t-caption { font-size: 12px; line-height: 1.5; color: var(--ink-500); }
+
+/* ---------------- 按钮 ---------------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
+  height: 36px; padding: 0 var(--s4);
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+  font-family: inherit; font-size: 14px; font-weight: 500; line-height: 1;
+  cursor: pointer; white-space: nowrap;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.btn:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.btn-primary { background: var(--brand-600); color: #fff; }
+.btn-primary:hover { background: var(--brand-700); }
+.btn-primary:active { background: var(--brand-800); }
+.btn-secondary { background: #fff; color: var(--ink-700); border-color: var(--line-300); }
+.btn-secondary:hover { background: var(--line-100); }
+.btn-danger { background: var(--danger-700); color: #fff; }
+.btn-danger:hover { background: #8F1D14; }
+.btn-ghost { background: transparent; color: var(--ink-600); }
+.btn-ghost:hover { background: var(--line-100); }
+.btn[disabled], .btn.is-disabled {
+  background: var(--line-100); color: var(--ink-500); border-color: var(--line-200);
+  cursor: not-allowed; box-shadow: none;
+}
+.btn-sm { height: 30px; padding: 0 var(--s3); font-size: 13px; }
+.btn-lg { height: 42px; padding: 0 var(--s5); font-size: 15px; }
+.btn-block { width: 100%; }
+
+/* ---------------- 徽标 ---------------- */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 22px; padding: 0 var(--s2);
+  border-radius: var(--r-sm);
+  font-size: 12px; font-weight: 500; line-height: 1;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.badge-neutral { background: var(--line-100); color: var(--ink-600); border-color: var(--line-200); }
+.badge-info { background: var(--brand-50); color: var(--brand-700); border-color: var(--brand-100); }
+.badge-ok { background: var(--success-50); color: var(--success-700); border-color: #BCE5CE; }
+.badge-warn { background: var(--warning-50); color: var(--warning-700); border-color: #EDDCA8; }
+.badge-bad { background: var(--danger-50); color: var(--danger-700); border-color: #F4C6C1; }
+
+.risk {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 22px; padding: 0 var(--s2);
+  border-radius: var(--r-sm); border: 1px solid;
+  font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap;
+}
+.risk::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.risk-high   { background: var(--risk-high-bg);   color: var(--risk-high-fg);   border-color: var(--risk-high-bd); }
+.risk-reach  { background: var(--risk-reach-bg);  color: var(--risk-reach-fg);  border-color: var(--risk-reach-bd); }
+.risk-border { background: var(--risk-border-bg); color: var(--risk-border-fg); border-color: var(--risk-border-bd); }
+.risk-stable { background: var(--risk-stable-bg); color: var(--risk-stable-fg); border-color: var(--risk-stable-bd); }
+.risk-safe   { background: var(--risk-safe-bg);   color: var(--risk-safe-fg);   border-color: var(--risk-safe-bd); }
+
+/* ---------------- 表单 ---------------- */
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field > label { font-size: 13px; font-weight: 500; color: var(--ink-700); }
+.field .hint { font-size: 12px; color: var(--ink-500); }
+.field .err { font-size: 12px; color: var(--danger-700); display: flex; align-items: center; gap: 4px; }
+
+.input, .select {
+  height: 36px; padding: 0 var(--s3);
+  border: 1px solid var(--line-300); border-radius: var(--r-md);
+  background: #fff; color: var(--ink-900);
+  font-family: inherit; font-size: 14px;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.input::placeholder { color: var(--ink-500); }
+.input:hover, .select:hover { border-color: var(--ink-500); }
+.input:focus, .select:focus { outline: none; border-color: var(--brand-600); box-shadow: var(--shadow-focus); }
+.input.is-error { border-color: var(--danger-700); }
+.input.is-error:focus { box-shadow: 0 0 0 3px rgba(180, 35, 24, .15); }
+.select {
+  appearance: none;
+  padding-right: 30px;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' fill='none' stroke='%2364748B' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center;
+}
+
+/* 三段式选科 */
+.subject-group { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); }
+.subject {
+  height: 52px; border: 1px solid var(--line-300); border-radius: var(--r-md);
+  background: #fff; cursor: pointer; font-family: inherit;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+.subject:hover { border-color: var(--brand-500); background: var(--brand-50); }
+.subject .pick { font-size: 13px; font-weight: 500; color: var(--ink-700); }
+.subject .state { font-size: 11px; color: var(--ink-500); }
+.subject.is-on { border-color: var(--brand-600); background: var(--brand-50); box-shadow: inset 0 0 0 1px var(--brand-600); }
+.subject.is-on .pick { color: var(--brand-700); font-weight: 600; }
+.subject.is-on .state { color: var(--brand-600); }
+.subject:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-700); cursor: pointer; }
+.check input { width: 15px; height: 15px; accent-color: var(--brand-600); margin: 0; }
+
+/* ---------------- 卡片 ---------------- */
+.card {
+  background: var(--surface); border: 1px solid var(--line-200);
+  border-radius: var(--r-lg); box-shadow: var(--shadow-1);
+}
+.card-head { padding: var(--s4) var(--s5); border-bottom: 1px solid var(--line-200); }
+.card-title { font-size: 15px; font-weight: 600; color: var(--ink-900); margin: 0; }
+.card-desc { font-size: 12px; color: var(--ink-500); margin: 2px 0 0; }
+.card-body { padding: var(--s5); }
+
+/* 结果卡片：左侧 3px 风险层色条，不靠阴影区分 */
+.rcard {
+  position: relative; background: #fff;
+  border: 1px solid var(--line-200); border-radius: var(--r-lg);
+  padding: var(--s4) var(--s4) var(--s4) var(--s5);
+  box-shadow: var(--shadow-1);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.rcard::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: var(--r-lg) 0 0 var(--r-lg); }
+.rcard.high::before   { background: var(--risk-high-fg); }
+.rcard.reach::before  { background: var(--risk-reach-fg); }
+.rcard.border::before { background: var(--risk-border-fg); }
+.rcard.stable::before { background: var(--risk-stable-fg); }
+.rcard.safe::before   { background: var(--risk-safe-fg); }
+.rcard:hover { border-color: var(--line-300); box-shadow: var(--shadow-2); }
+.rcard.is-selected { border-color: var(--brand-600); box-shadow: inset 0 0 0 1px var(--brand-600); }
+
+.rc-top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s3); }
+.rc-uni { font-size: 15px; font-weight: 600; color: var(--ink-900); line-height: 1.35; }
+.rc-loc { font-size: 12px; color: var(--ink-500); margin-top: 1px; }
+.rc-major { font-size: 14px; color: var(--ink-700); margin-top: var(--s2); }
+.rc-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: var(--s2); }
+
+/* ACS 数值块：数字大、单位小、附释义 */
+.acs { display: flex; align-items: baseline; gap: 3px; }
+.acs .v { font-size: 20px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.acs .u { font-size: 11px; color: var(--ink-500); }
+.acs.high   { color: var(--risk-high-fg); }
+.acs.reach  { color: var(--risk-reach-fg); }
+.acs.border { color: var(--risk-border-fg); }
+.acs.stable { color: var(--risk-stable-fg); }
+.acs.safe   { color: var(--risk-safe-fg); }
+
+.kv { display: flex; flex-wrap: wrap; gap: var(--s4); margin-top: var(--s3); padding-top: var(--s3); border-top: 1px dashed var(--line-200); }
+.kv .item { display: flex; flex-direction: column; gap: 1px; }
+.kv .k { font-size: 11px; color: var(--ink-500); }
+.kv .v { font-size: 13px; color: var(--ink-700); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* ---------------- 表格 ---------------- */
+.table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+.table thead th {
+  background: var(--line-100); color: var(--ink-500);
+  font-size: 12px; font-weight: 500; text-align: left;
+  padding: var(--s2) var(--s3); border-bottom: 1px solid var(--line-200);
+  white-space: nowrap;
+}
+.table thead th:first-child { border-top-left-radius: var(--r-sm); }
+.table thead th:last-child { border-top-right-radius: var(--r-sm); }
+.table tbody td { padding: var(--s3); border-bottom: 1px solid var(--line-100); color: var(--ink-700); vertical-align: middle; }
+.table tbody tr:last-child td { border-bottom: 0; }
+.table tbody tr:hover td { background: #FCFDFE; }
+.table .r { text-align: right; }
+.table .c { text-align: center; }
+.table .strong { color: var(--ink-900); font-weight: 500; }
+.table .sub { display: block; font-size: 11px; color: var(--ink-500); }
+.table .pos { color: var(--ink-500); font-variant-numeric: tabular-nums; }
+
+/* ---------------- 状态：空 / 加载 / 错误 ---------------- */
+.empty { text-align: center; padding: var(--s7) var(--s4); }
+.empty .ico { width: 44px; height: 44px; margin: 0 auto var(--s3); color: var(--ink-400); }
+.empty .ttl { font-size: 14px; font-weight: 500; color: var(--ink-700); }
+.empty .dsc { font-size: 12px; color: var(--ink-500); margin-top: var(--s1); max-width: 360px; margin-left: auto; margin-right: auto; }
+
+.skel { background: linear-gradient(90deg, #EEF2F6 25%, #F6F8FA 37%, #EEF2F6 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; border-radius: var(--r-sm); }
+@keyframes shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+.skel-line { height: 12px; margin-bottom: 8px; }
+.skel-title { height: 16px; width: 45%; margin-bottom: 12px; }
+.skel-chip { height: 22px; width: 60px; display: inline-block; margin-right: 6px; }
+
+.alert { display: flex; gap: var(--s3); padding: var(--s3) var(--s4); border-radius: var(--r-md); border: 1px solid; font-size: 13px; }
+.alert .bar { width: 3px; border-radius: 2px; flex: none; }
+.alert-warn { background: var(--warning-50); border-color: #EDDCA8; color: #7C3D06; }
+.alert-warn .bar { background: var(--warning-700); }
+.alert-info { background: var(--info-50); border-color: var(--brand-100); color: var(--brand-800); }
+.alert-info .bar { background: var(--brand-600); }
+.alert-bad { background: var(--danger-50); border-color: #F4C6C1; color: #8F1D14; }
+.alert-bad .bar { background: var(--danger-700); }
+
+/* ---------------- 页面稿 ---------------- */
+.mock {
+  border: 1px solid var(--line-300); border-radius: var(--r-lg);
+  overflow: hidden; background: var(--canvas);
+  box-shadow: var(--shadow-2);
+}
+.mock-bar {
+  background: #E7EDF5; border-bottom: 1px solid var(--line-200);
+  padding: 6px var(--s3); font-size: 11px; color: var(--ink-500);
+  display: flex; align-items: center; gap: var(--s2);
+}
+.mock-bar .dots { display: flex; gap: 4px; }
+.mock-bar .dots i { width: 8px; height: 8px; border-radius: 50%; background: #C3CFDE; display: block; }
+.mock-view { padding: 0; }
+
+/* 应用导航 */
+.app-nav {
+  background: #fff; border-bottom: 1px solid var(--line-200);
+  padding: 0 var(--s5); height: 52px;
+  display: flex; align-items: center; gap: var(--s5);
+}
+.app-brand { display: flex; align-items: center; gap: var(--s2); font-weight: 600; color: var(--ink-900); font-size: 14px; }
+.app-logo {
+  width: 26px; height: 26px; border-radius: var(--r-sm);
+  background: var(--brand-600); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700;
+}
+.steps { display: flex; align-items: center; gap: 2px; margin-left: var(--s4); }
+.step {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px var(--s3); border-radius: var(--r-md);
+  font-size: 12px; color: var(--ink-500); white-space: nowrap;
+}
+.step .n {
+  width: 18px; height: 18px; border-radius: 50%; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-variant-numeric: tabular-nums;
+  background: var(--line-100); color: var(--ink-500);
+}
+.step.done .n { background: var(--success-50); color: var(--success-700); }
+.step.on { background: var(--brand-50); color: var(--brand-700); font-weight: 600; }
+.step.on .n { background: var(--brand-600); color: #fff; }
+
+.mock-body { padding: var(--s5); }
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s4); margin-bottom: var(--s4); }
+.page-title { font-size: 20px; font-weight: 600; color: var(--ink-900); margin: 0; }
+.page-sub { font-size: 12px; color: var(--ink-500); margin-top: 2px; }
+
+.disclaimer {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--ink-600);
+  background: var(--line-100); border: 1px solid var(--line-200);
+  border-radius: var(--r-md); padding: 6px var(--s3);
+}
+.disclaimer strong { color: var(--ink-700); font-weight: 600; }
+
+/* 筛选栏 */
+.filterbar {
+  display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
+  background: #fff; border: 1px solid var(--line-200); border-radius: var(--r-lg);
+  padding: var(--s3) var(--s4); box-shadow: var(--shadow-1); margin-bottom: var(--s4);
+}
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 28px; padding: 0 var(--s3); border-radius: var(--r-md);
+  border: 1px solid var(--line-300); background: #fff;
+  font-size: 12px; color: var(--ink-600); cursor: pointer; white-space: nowrap;
+}
+.chip:hover { background: var(--line-100); }
+.chip.on { background: var(--brand-50); border-color: var(--brand-600); color: var(--brand-700); font-weight: 600; }
+.chip .cnt { color: var(--ink-500); font-variant-numeric: tabular-nums; }
+.chip.on .cnt { color: var(--brand-600); }
+
+.seg { display: inline-flex; border: 1px solid var(--line-300); border-radius: var(--r-md); overflow: hidden; }
+.seg button {
+  height: 28px; padding: 0 var(--s3); border: 0; background: #fff;
+  font-family: inherit; font-size: 12px; color: var(--ink-600); cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--line-300); }
+.seg button.on { background: var(--brand-600); color: #fff; font-weight: 600; }
+
+/* 推荐结果：宽屏两列，1280 以下单列。单列铺满 1376 会留下大片空白 */
+.results { display: grid; gap: var(--s3); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 1180px) { .results { grid-template-columns: 1fr; } }
+
+/* 两栏 */
+.two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s4); }
+.two-col.wide-left { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+
+/* 方案行 */
+.scheme-row {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s3) var(--s3); border-bottom: 1px solid var(--line-100);
+  background: #fff;
+}
+.scheme-row:last-child { border-bottom: 0; }
+.scheme-row:hover { background: #FCFDFE; }
+.scheme-row .grip { color: var(--line-300); cursor: grab; flex: none; width: 12px; }
+.scheme-row .pick { flex: none; align-self: flex-start; margin-top: 3px; display: flex; }
+.scheme-row .idx {
+  width: 22px; flex: none; text-align: right;
+  font-size: 12px; color: var(--ink-500); font-variant-numeric: tabular-nums;
+}
+.scheme-row .body { flex: 1; min-width: 0; }
+.scheme-row .uni { font-size: 13px; font-weight: 500; color: var(--ink-900); }
+.scheme-row .major { font-size: 12px; color: var(--ink-600); }
+.scheme-row .acs-mini { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; width: 40px; text-align: right; flex: none; }
+.scheme-row .acts { display: flex; gap: 2px; flex: none; }
+.icon-btn {
+  width: 24px; height: 24px; border: 0; border-radius: var(--r-sm);
+  background: transparent; color: var(--ink-400); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; font-size: 13px;
+}
+.icon-btn:hover { background: var(--line-100); color: var(--ink-700); }
+.icon-btn.is-locked { color: var(--warning-700); }
+
+.scroll-box { max-height: 344px; overflow: hidden; position: relative; }
+.fade-bottom::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 40px;
+  background: linear-gradient(180deg, rgba(255,255,255,0), #fff);
+}
+
+/* 计数条 */
+.countbar { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); font-size: 12px; color: var(--ink-500); }
+.countbar .strong { color: var(--ink-900); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* 分页 */
+.pager { display: flex; align-items: center; justify-content: center; gap: var(--s2); padding: var(--s4) 0 0; }
+.pager .pg {
+  min-width: 30px; height: 30px; padding: 0 var(--s2);
+  border: 1px solid var(--line-300); border-radius: var(--r-md);
+  background: #fff; font-size: 12px; color: var(--ink-600);
+  font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.pager .pg.on { background: var(--brand-600); border-color: var(--brand-600); color: #fff; font-weight: 600; }
+.pager .pg[disabled] { color: var(--ink-400); background: var(--line-100); cursor: not-allowed; }
+
+/* 规范表 */
+.spec-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.spec-table th { text-align: left; padding: var(--s2) var(--s3); background: var(--line-100); color: var(--ink-500); font-weight: 500; }
+.spec-table td { padding: var(--s2) var(--s3); border-bottom: 1px solid var(--line-100); color: var(--ink-700); font-variant-numeric: tabular-nums; }
+.spec-table code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 11px; color: var(--brand-700); background: var(--brand-50); padding: 1px 4px; border-radius: 3px; }
+
+.note { font-size: 12px; color: var(--ink-500); margin-top: var(--s3); }
+.note code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 11px; background: var(--line-100); padding: 1px 4px; border-radius: 3px; color: var(--ink-700); }
+
+/* 间距可视化 */
+.spacing-vis { display: flex; align-items: flex-end; gap: var(--s3); }
+.spacing-vis .sp { text-align: center; font-size: 10px; color: var(--ink-500); }
+.spacing-vis .sp i { display: block; background: var(--brand-100); border: 1px solid var(--brand-500); border-radius: 2px; margin-bottom: 4px; }
+
+@media (max-width: 1100px) {
+  .g2, .g3, .g4, .g5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .two-col, .two-col.wide-left { grid-template-columns: 1fr; }
+  .wrap { padding: var(--s4); }
+}
+</style>
+</head>
+<body>
+
+<div class="spec-head">
+  <h1>山东高考智能志愿 · 设计稿 v1</h1>
+  <span class="meta">方向：专业稳重（教育 / 政务风）　·　桌面 1280–1440　·　仅浅色</span>
+  <nav>
+    <a href="#principles">原则</a>
+    <a href="#color">色板</a>
+    <a href="#type">字体</a>
+    <a href="#space">间距</a>
+    <a href="#components">组件</a>
+    <a href="#page-recommend">推荐结果</a>
+    <a href="#page-editor">编辑器</a>
+    <a href="#states">状态</a>
+    <a href="#a11y">可访问性</a>
+  </nav>
+</div>
+
+<div class="wrap">
+
+<!-- ============ 设计原则 ============ -->
+<section class="sec" id="principles">
+  <h2>一、设计原则</h2>
+  <p class="lead">这套界面的用户是在做一个人生级别的决定，且往往伴随焦虑。设计目标不是"好看"，而是"敢信"。</p>
+  <div class="grid g4">
+    <div class="panel">
+      <div class="t-h2">数据优先</div>
+      <p class="t-small" style="margin:6px 0 0">位次、ACS、计划数、学费是第一眼要看到的。装饰元素一律让位，不出现在数据周围。</p>
+    </div>
+    <div class="panel">
+      <div class="t-h2">弱阴影、强边框</div>
+      <p class="t-small" style="margin:6px 0 0">用 1px 边框与留白分层，不用投影堆叠。政务类界面的"稳"来自秩序感，不是玻璃拟态。</p>
+    </div>
+    <div class="panel">
+      <div class="t-h2">风险必须能数出来</div>
+      <p class="t-small" style="margin:6px 0 0">五个风险层永远同时给出颜色、中文名、数量。不用颜色单独承载信息，色盲用户也能读。</p>
+    </div>
+    <div class="panel">
+      <div class="t-h2">不制造确定性错觉</div>
+      <p class="t-small" style="margin:6px 0 0">ACS 是安全指数不是概率。界面任何位置都不出现"录取几率 87%"这类表述，也不把它画成进度条。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 色板 ============ -->
+<section class="sec" id="color">
+  <h2>二、色板</h2>
+  <p class="lead">主色由原来的 <code>hsl(221 83% 45%)</code>（实测 <strong>#1450D2</strong>，饱和度过高、按钮白字仅 6.76:1）换成更沉的 <strong>#1D4E89</strong>：降低饱和换取可信感，按钮白字对比度升到 8.39:1。</p>
+
+  <h3>品牌与中性色</h3>
+  <div class="swatches">
+    <div class="sw"><div class="block" style="background:#10305C"></div><div class="info"><div class="name">brand-800</div><div class="hex">#10305C</div><div class="use">顶栏、按下态</div></div></div>
+    <div class="sw"><div class="block" style="background:#163E75"></div><div class="info"><div class="name">brand-700</div><div class="hex">#163E75</div><div class="use">悬停、深色文字</div></div></div>
+    <div class="sw"><div class="block" style="background:#1D4E89"></div><div class="info"><div class="name">brand-600 主色</div><div class="hex">#1D4E89</div><div class="use">按钮、链接、选中</div></div></div>
+    <div class="sw"><div class="block" style="background:#2A63A9"></div><div class="info"><div class="name">brand-500</div><div class="hex">#2A63A9</div><div class="use">边框强调</div></div></div>
+    <div class="sw"><div class="block" style="background:#D9E6F6"></div><div class="info"><div class="name">brand-100</div><div class="hex">#D9E6F6</div><div class="use">浅色边框</div></div></div>
+    <div class="sw"><div class="block" style="background:#EEF3FA"></div><div class="info"><div class="name">brand-50</div><div class="hex">#EEF3FA</div><div class="use">选中底、标签底</div></div></div>
+  </div>
+
+  <div class="swatches" style="margin-top:12px">
+    <div class="sw"><div class="block" style="background:#0F172A"></div><div class="info"><div class="name">ink-900</div><div class="hex">#0F172A</div><div class="use">标题 17.85:1</div></div></div>
+    <div class="sw"><div class="block" style="background:#334155"></div><div class="info"><div class="name">ink-700</div><div class="hex">#334155</div><div class="use">正文 10.35:1</div></div></div>
+    <div class="sw"><div class="block" style="background:#475569"></div><div class="info"><div class="name">ink-600</div><div class="hex">#475569</div><div class="use">次要正文 7.58:1</div></div></div>
+    <div class="sw"><div class="block" style="background:#64748B"></div><div class="info"><div class="name">ink-500</div><div class="hex">#64748B</div><div class="use">辅助 4.76:1</div></div></div>
+    <div class="sw"><div class="block" style="background:#728297"></div><div class="info"><div class="name">ink-400</div><div class="hex">#728297</div><div class="use">图标/边框 3.9:1</div></div></div>
+    <div class="sw"><div class="block" style="background:#CBD5E1"></div><div class="info"><div class="name">line-300</div><div class="hex">#CBD5E1</div><div class="use">控件边框</div></div></div>
+    <div class="sw"><div class="block" style="background:#E2E8F0"></div><div class="info"><div class="name">line-200</div><div class="hex">#E2E8F0</div><div class="use">卡片边框</div></div></div>
+    <div class="sw"><div class="block" style="background:#F1F5F9"></div><div class="info"><div class="name">line-100</div><div class="hex">#F1F5F9</div><div class="use">表头、分隔</div></div></div>
+  </div>
+
+  <h3>语义色</h3>
+  <div class="swatches">
+    <div class="sw"><div class="block" style="background:#0F7B4F"></div><div class="info"><div class="name">success</div><div class="hex">#0F7B4F</div><div class="use">通过、稳妥</div></div></div>
+    <div class="sw"><div class="block" style="background:#B45309"></div><div class="info"><div class="name">warning</div><div class="hex">#B45309</div><div class="use">提示、锁定</div></div></div>
+    <div class="sw"><div class="block" style="background:#B42318"></div><div class="info"><div class="name">danger</div><div class="hex">#B42318</div><div class="use">错误、删除</div></div></div>
+    <div class="sw"><div class="block" style="background:#1D4E89"></div><div class="info"><div class="name">info</div><div class="hex">#1D4E89</div><div class="use">说明（同主色）</div></div></div>
+  </div>
+
+  <h3>五个风险层</h3>
+  <p class="note">从"危"到"安"做单调递进：色相拉开、明度接近，保证并排时能分辨；每个徽标都自带中文，颜色不是唯一信息载体。深色文字放在同色系浅底上，对比度均 ≥ 5.5:1。</p>
+  <div class="grid g5">
+    <div class="panel" style="padding:12px">
+      <span class="risk risk-high">高冲</span>
+      <div class="t-caption" style="margin-top:8px">bg #FEF3F2<br>fg #B42318</div>
+      <div class="t-caption" style="margin-top:4px">ACS 0–29</div>
+    </div>
+    <div class="panel" style="padding:12px">
+      <span class="risk risk-reach">冲</span>
+      <div class="t-caption" style="margin-top:8px">bg #FFF4ED<br>fg #C2410C</div>
+      <div class="t-caption" style="margin-top:4px">ACS 30–44</div>
+    </div>
+    <div class="panel" style="padding:12px">
+      <span class="risk risk-border">边界</span>
+      <div class="t-caption" style="margin-top:8px">bg #FEFCE8<br>fg #A16207</div>
+      <div class="t-caption" style="margin-top:4px">ACS 45–59</div>
+    </div>
+    <div class="panel" style="padding:12px">
+      <span class="risk risk-stable">稳</span>
+      <div class="t-caption" style="margin-top:8px">bg #ECFEFF<br>fg #0E7490</div>
+      <div class="t-caption" style="margin-top:4px">ACS 60–79</div>
+    </div>
+    <div class="panel" style="padding:12px">
+      <span class="risk risk-safe">保</span>
+      <div class="t-caption" style="margin-top:8px">bg #ECFDF3<br>fg #0F7B4F</div>
+      <div class="t-caption" style="margin-top:4px">ACS 80–100</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 字体 ============ -->
+<section class="sec" id="type">
+  <h2>三、字体阶梯</h2>
+  <p class="lead">只用系统字体（微软雅黑 / 苹方），不打包字体文件。中文界面下 14px 是正文下限，辅助信息不低于 12px。</p>
+  <div class="panel">
+    <div class="type-row"><div class="label">display / 28 / 600</div><div class="sample t-display">山东高考智能志愿</div></div>
+    <div class="type-row"><div class="label">h1 / 22 / 600</div><div class="sample t-h1">推荐结果</div></div>
+    <div class="type-row"><div class="label">h2 / 16 / 600</div><div class="sample t-h2">候选池 · 96 条方案已满</div></div>
+    <div class="type-row"><div class="label">body / 14 / 400</div><div class="sample t-body">黑龙江 农业资源与环境　计划 3 人　学费 3000 元</div></div>
+    <div class="type-row"><div class="label">small / 13 / 400</div><div class="sample t-small">资格要求：物理、化学（两科均须选考）</div></div>
+    <div class="type-row"><div class="label">caption / 12 / 400</div><div class="sample t-caption">数据截至 2026 年 6 月 · 来源标记为第三方整理</div></div>
+    <div class="type-row">
+      <div class="label">数字 / 等宽</div>
+      <div class="sample">
+        <span class="t-body num">位次 60,000　ACS 59.9　计划 3　学费 3,000</span>
+        <div class="t-caption" style="margin-top:4px">拉丁数字全部 <code style="font-size:11px;background:#F1F5F9;padding:1px 4px;border-radius:3px">font-variant-numeric: tabular-nums</code>，保证表格列与数字串上下对齐</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 间距圆角 ============ -->
+<section class="sec" id="space">
+  <h2>四、间距、圆角、阴影</h2>
+  <div class="grid g2">
+    <div class="panel">
+      <h3 style="margin-top:0">间距（4 的倍数）</h3>
+      <div class="spacing-vis">
+        <div class="sp"><i style="width:4px;height:4px"></i>4</div>
+        <div class="sp"><i style="width:8px;height:8px"></i>8</div>
+        <div class="sp"><i style="width:12px;height:12px"></i>12</div>
+        <div class="sp"><i style="width:16px;height:16px"></i>16</div>
+        <div class="sp"><i style="width:24px;height:24px"></i>24</div>
+        <div class="sp"><i style="width:32px;height:32px"></i>32</div>
+        <div class="sp"><i style="width:48px;height:48px"></i>48</div>
+      </div>
+      <p class="note">卡片内边距 24；控件间距 8；区块间距 24；页面区块之间 48。</p>
+    </div>
+    <div class="panel">
+      <h3 style="margin-top:0">圆角与阴影</h3>
+      <table class="spec-table">
+        <tr><th>用途</th><th>值</th></tr>
+        <tr><td>小控件 / 徽标</td><td><code>4px</code></td></tr>
+        <tr><td>按钮 / 输入框</td><td><code>6px</code></td></tr>
+        <tr><td>卡片 / 面板</td><td><code>8px</code></td></tr>
+        <tr><td>胶囊标签</td><td><code>999px</code></td></tr>
+        <tr><td>卡片阴影</td><td><code>0 1px 2px rgba(15,23,42,.04)</code></td></tr>
+        <tr><td>悬停阴影</td><td><code>0 1px 3px rgba(15,23,42,.06)</code></td></tr>
+        <tr><td>焦点环</td><td><code>0 0 0 3px rgba(29,78,137,.18)</code></td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 组件 ============ -->
+<section class="sec" id="components">
+  <h2>五、组件</h2>
+
+  <h3>按钮</h3>
+  <div class="panel">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-primary">生成推荐</button>
+      <button class="btn btn-primary" style="background:#163E75">悬停态</button>
+      <button class="btn btn-primary" style="background:#10305C">按下态</button>
+      <button class="btn btn-primary" disabled>生成推荐</button>
+      <button class="btn btn-secondary">重新优化</button>
+      <button class="btn btn-ghost">取消</button>
+      <button class="btn btn-danger">删除档案</button>
+      <button class="btn btn-primary btn-sm">加入(3)</button>
+      <button class="btn btn-primary btn-lg">开始生成我的方案</button>
+    </div>
+    <p class="note">高度 36 / 30（sm）/ 42（lg）。圆角 6。按下态不用透明度，用更深一档的实色 —— 避免在浅色背景上发灰。</p>
+  </div>
+
+  <h3>风险层徽标与资格徽标</h3>
+  <div class="panel">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span class="risk risk-high">高冲</span>
+      <span class="risk risk-reach">冲</span>
+      <span class="risk risk-border">边界</span>
+      <span class="risk risk-stable">稳</span>
+      <span class="risk risk-safe">保</span>
+      <span style="width:16px"></span>
+      <span class="badge badge-ok">资格通过</span>
+      <span class="badge badge-warn">待确认</span>
+      <span class="badge badge-bad">资格不符</span>
+      <span class="badge badge-info">985</span>
+      <span class="badge badge-neutral">211</span>
+      <span class="badge badge-neutral">双一流</span>
+    </div>
+    <p class="note">风险徽标带一个 5px 圆点，颜色与文字同源；资格徽标用语义色，不承担风险含义 —— 两套颜色系统不混用。</p>
+  </div>
+
+  <h3>结果卡片</h3>
+  <div class="grid g3">
+    <div class="rcard high">
+      <div class="rc-top">
+        <div>
+          <div class="rc-uni">大连理工大学</div>
+          <div class="rc-loc">辽宁省 · 大连市</div>
+        </div>
+        <div style="text-align:right">
+          <span class="risk risk-high">高冲</span>
+          <div class="acs high" style="justify-content:flex-end;margin-top:6px"><span class="v">29.9</span><span class="u">ACS</span></div>
+        </div>
+      </div>
+      <div class="rc-major">药学</div>
+      <div class="rc-tags"><span class="badge badge-info">985</span><span class="badge badge-neutral">双一流</span><span class="badge badge-neutral">物理、化学</span></div>
+      <div class="kv">
+        <div class="item"><span class="k">偏好分</span><span class="v num">100</span></div>
+        <div class="item"><span class="k">计划</span><span class="v num">11</span></div>
+        <div class="item"><span class="k">学费</span><span class="v num">85,000</span></div>
+      </div>
+    </div>
+
+    <div class="rcard border is-selected">
+      <div class="rc-top">
+        <div>
+          <div class="rc-uni">东北农业大学</div>
+          <div class="rc-loc">黑龙江省 · 哈尔滨市</div>
+        </div>
+        <div style="text-align:right">
+          <span class="risk risk-border">边界</span>
+          <div class="acs border" style="justify-content:flex-end;margin-top:6px"><span class="v">59.9</span><span class="u">ACS</span></div>
+        </div>
+      </div>
+      <div class="rc-major">农业资源与环境</div>
+      <div class="rc-tags"><span class="badge badge-neutral">211</span><span class="badge badge-neutral">双一流</span><span class="badge badge-neutral">物理、化学</span></div>
+      <div class="kv">
+        <div class="item"><span class="k">偏好分</span><span class="v num">66.7</span></div>
+        <div class="item"><span class="k">计划</span><span class="v num">3</span></div>
+        <div class="item"><span class="k">学费</span><span class="v num">3,000</span></div>
+      </div>
+    </div>
+
+    <div class="rcard safe">
+      <div class="rc-top">
+        <div>
+          <div class="rc-uni">新疆大学</div>
+          <div class="rc-loc">新疆维吾尔自治区 · 乌鲁木齐</div>
+        </div>
+        <div style="text-align:right">
+          <span class="risk risk-safe">保</span>
+          <div class="acs safe" style="justify-content:flex-end;margin-top:6px"><span class="v">90.3</span><span class="u">ACS</span></div>
+        </div>
+      </div>
+      <div class="rc-major">环境工程</div>
+      <div class="rc-tags"><span class="badge badge-neutral">211</span><span class="badge badge-neutral">双一流</span><span class="badge badge-neutral">物理、化学</span></div>
+      <div class="kv">
+        <div class="item"><span class="k">偏好分</span><span class="v num">66.7</span></div>
+        <div class="item"><span class="k">计划</span><span class="v num">8</span></div>
+        <div class="item"><span class="k">学费</span><span class="v num">3,500</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="note">左侧 3px 色条是风险层，不靠阴影区分；选中态用主色描边 + 内描边，不改背景。右上的 ACS 用等宽数字，配 <code>ACS</code> 小字说明单位，<strong>不做进度条</strong> —— 进度条会让人读成概率。</p>
+
+  <h3>表单</h3>
+  <div class="grid g2">
+    <div class="panel">
+      <div class="field">
+        <label for="rank">全省位次</label>
+        <input class="input num" id="rank" value="60,000">
+        <span class="hint">填一分一段表里的累计人数</span>
+      </div>
+      <div class="field" style="margin-top:16px">
+        <label for="rank2">全省位次（错误态）</label>
+        <input class="input is-error num" id="rank2" value="600000">
+        <span class="err">⚠ 位次 600,000 超出 2025 年一段达线人数 333,469，请核对</span>
+      </div>
+      <div class="field" style="margin-top:16px">
+        <label for="prov">院校所在地</label>
+        <select class="select" id="prov">
+          <option>不限</option>
+          <option>山东省（1,204）</option>
+          <option>北京市（856）</option>
+        </select>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="field">
+        <label>选考科目（恰好 3 科）</label>
+        <div class="subject-group">
+          <button class="subject is-on"><span class="pick">物理</span><span class="state">已选</span></button>
+          <button class="subject is-on"><span class="pick">化学</span><span class="state">已选</span></button>
+          <button class="subject is-on"><span class="pick">生物</span><span class="state">已选</span></button>
+          <button class="subject"><span class="pick">思想政治</span><span class="state">可选</span></button>
+          <button class="subject"><span class="pick">历史</span><span class="state">可选</span></button>
+          <button class="subject"><span class="pick">地理</span><span class="state">可选</span></button>
+        </div>
+        <span class="hint" style="margin-top:6px">已选 3 / 3 科，再选会替换最先选的一科</span>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:16px;flex-wrap:wrap">
+        <label class="check"><input type="checkbox" checked>只看 985</label>
+        <label class="check"><input type="checkbox">只看 211</label>
+        <label class="check"><input type="checkbox">只看双一流</label>
+      </div>
+    </div>
+  </div>
+
+  <h3>方案表格</h3>
+  <!-- 限宽：10 列在 1376px 下会把院校列拉出大片空白，真实表格宽度约 900 -->
+  <div class="panel" style="padding:0;overflow:hidden;max-width:900px">
+    <table class="table">
+      <thead>
+        <tr>
+          <th style="width:52px">序号</th>
+          <th>院校 / 专业</th>
+          <th style="width:96px">选考要求</th>
+          <th style="width:88px">风险层</th>
+          <th style="width:76px" class="r">ACS</th>
+          <th style="width:76px" class="r">置信度</th>
+          <th style="width:76px" class="r">计划</th>
+          <th style="width:92px" class="r">学费</th>
+          <th style="width:88px" class="c">资格</th>
+          <th style="width:64px" class="c">锁定</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="pos">1</td>
+          <td><span class="strong">湖南大学</span><span class="sub">生物技术</span></td>
+          <td class="t-caption">物理、化学</td>
+          <td><span class="risk risk-high">高冲</span></td>
+          <td class="r num">27.7</td>
+          <td class="r num" style="color:var(--ink-500)">86%</td>
+          <td class="r num">6</td>
+          <td class="r num">5,300</td>
+          <td class="c"><span class="badge badge-ok">通过</span></td>
+          <td class="c"><span class="icon-btn" style="font-size:12px">🔒</span></td>
+        </tr>
+        <tr>
+          <td class="pos">2</td>
+          <td><span class="strong">中南大学</span><span class="sub">交通运输类</span></td>
+          <td class="t-caption">物理、化学</td>
+          <td><span class="risk risk-high">高冲</span></td>
+          <td class="r num">27.8</td>
+          <td class="r num" style="color:var(--ink-500)">92%</td>
+          <td class="r num">9</td>
+          <td class="r num">6,500</td>
+          <td class="c"><span class="badge badge-ok">通过</span></td>
+          <td class="c"><span class="icon-btn" style="font-size:12px">🔓</span></td>
+        </tr>
+        <tr>
+          <td class="pos">3</td>
+          <td><span class="strong">华东师范大学</span><span class="sub">微电子科学与工程</span></td>
+          <td class="t-caption">物理、化学</td>
+          <td><span class="risk risk-high">高冲</span></td>
+          <td class="r num">28.8</td>
+          <td class="r num" style="color:var(--ink-500)">78%</td>
+          <td class="r num">5</td>
+          <td class="r num">5,000</td>
+          <td class="c"><span class="badge badge-ok">通过</span></td>
+          <td class="c"><span class="icon-btn" style="font-size:12px">🔓</span></td>
+        </tr>
+        <tr>
+          <td class="pos">37</td>
+          <td><span class="strong">西南大学</span><span class="sub">动物科学</span></td>
+          <td class="t-caption">物理、化学</td>
+          <td><span class="risk risk-stable">稳</span></td>
+          <td class="r num">80.0</td>
+          <td class="r num" style="color:var(--ink-500)">88%</td>
+          <td class="r num">6</td>
+          <td class="r num">40,000</td>
+          <td class="c"><span class="badge badge-ok">通过</span></td>
+          <td class="c"><span class="icon-btn" style="font-size:12px">🔓</span></td>
+        </tr>
+        <tr>
+          <td class="pos">78</td>
+          <td><span class="strong">新疆大学</span><span class="sub">环境工程</span></td>
+          <td class="t-caption">物理、化学</td>
+          <td><span class="risk risk-safe">保</span></td>
+          <td class="r num">90.3</td>
+          <td class="r num" style="color:var(--ink-500)">71%</td>
+          <td class="r num">8</td>
+          <td class="r num">3,500</td>
+          <td class="c"><span class="badge badge-ok">通过</span></td>
+          <td class="c"><span class="icon-btn" style="font-size:12px">🔓</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">数字列右对齐并等宽；院校名与专业名分两行（院校是主键、专业是次键）；序号保留真实位置（第 78 位），即使中间被筛选隐藏也不改号 —— 这一点对"顺序即志愿顺序"至关重要。</p>
+</section>
+
+<!-- ============ 推荐结果页 ============ -->
+<section class="sec" id="page-recommend">
+  <h2>六、页面稿 · 推荐结果</h2>
+  <p class="lead">真实数据：位次 60,000，候选池 19,019 条，覆盖 1,118 所院校。</p>
+
+  <div class="mock">
+    <div class="mock-bar"><span class="dots"><i></i><i></i><i></i></span><span>山东高考智能志愿 — 推荐结果</span></div>
+    <div class="mock-view">
+      <div class="app-nav">
+        <div class="app-brand"><span class="app-logo">鲁</span>山东高考智能志愿</div>
+        <div class="steps">
+          <div class="step done"><span class="n">1</span>成绩与选科</div>
+          <div class="step done"><span class="n">2</span>偏好画像</div>
+          <div class="step on"><span class="n">3</span>推荐结果</div>
+          <div class="step"><span class="n">4</span>志愿编辑器</div>
+          <div class="step"><span class="n">5</span>志愿体检</div>
+        </div>
+      </div>
+
+      <div class="mock-body">
+        <div class="page-head">
+          <div>
+            <h3 class="page-title">推荐结果</h3>
+            <div class="page-sub">位次 60,000　·　物理 / 化学 / 生物　·　均衡型策略（高冲 8 · 冲 17 · 边界 20 · 稳 31 · 保 20）</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-secondary btn-sm">导出</button>
+            <button class="btn btn-primary btn-sm">生成 96 条方案</button>
+          </div>
+        </div>
+
+        <div class="disclaimer" style="margin-bottom:16px">
+          <strong>说明：</strong>ACS 是<strong>录取安全指数</strong>（0–100），用于横向比较同一批次内的相对安全程度，<strong>不是录取概率</strong>。
+          数据截至 2026 年 6 月，来源标记为第三方整理，填报前请以官方《填报志愿指南》核对。
+        </div>
+
+        <div class="filterbar">
+          <span class="chip on">全部<span class="cnt">18924</span></span>
+          <span class="chip">高冲<span class="cnt">4923</span></span>
+          <span class="chip">冲<span class="cnt">375</span></span>
+          <span class="chip">边界<span class="cnt">195</span></span>
+          <span class="chip">稳<span class="cnt">7637</span></span>
+          <span class="chip">保<span class="cnt">5794</span></span>
+          <span style="flex:1"></span>
+          <span class="chip on">筛选 (2)</span>
+          <span class="chip">排序：偏好分 ↓</span>
+        </div>
+
+        <div class="results">
+          <div class="rcard high">
+            <div class="rc-top">
+              <div>
+                <div class="rc-uni">大连理工大学</div>
+                <div class="rc-loc">辽宁省 · 大连市</div>
+              </div>
+              <div style="text-align:right">
+                <span class="risk risk-high">高冲</span>
+                <div class="acs high" style="justify-content:flex-end;margin-top:6px"><span class="v">29.9</span><span class="u">ACS</span></div>
+              </div>
+            </div>
+            <div class="rc-major">药学</div>
+            <div class="rc-tags"><span class="badge badge-info">985</span><span class="badge badge-neutral">双一流</span><span class="badge badge-neutral">物理、化学</span></div>
+            <div class="kv">
+              <div class="item"><span class="k">偏好分</span><span class="v num">100.0</span></div>
+              <div class="item"><span class="k">计划</span><span class="v num">11</span></div>
+              <div class="item"><span class="k">学费</span><span class="v num">85,000 元</span></div>
+              <div class="item"><span class="k">置信度</span><span class="v num">86%</span></div>
+              <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+                <button class="btn btn-secondary btn-sm">详情</button>
+                <button class="btn btn-primary btn-sm">加入方案</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="rcard reach">
+            <div class="rc-top">
+              <div>
+                <div class="rc-uni">广西大学</div>
+                <div class="rc-loc">广西壮族自治区 · 南宁市</div>
+              </div>
+              <div style="text-align:right">
+                <span class="risk risk-reach">冲</span>
+                <div class="acs reach" style="justify-content:flex-end;margin-top:6px"><span class="v">43.9</span><span class="u">ACS</span></div>
+              </div>
+            </div>
+            <div class="rc-major">生物技术</div>
+            <div class="rc-tags"><span class="badge badge-neutral">211</span><span class="badge badge-neutral">双一流</span><span class="badge badge-neutral">物理、化学</span></div>
+            <div class="kv">
+              <div class="item"><span class="k">偏好分</span><span class="v num">66.7</span></div>
+              <div class="item"><span class="k">计划</span><span class="v num">10</span></div>
+              <div class="item"><span class="k">学费</span><span class="v num">5,973 元</span></div>
+              <div class="item"><span class="k">置信度</span><span class="v num">92%</span></div>
+              <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+                <button class="btn btn-secondary btn-sm">详情</button>
+                <button class="btn btn-primary btn-sm">加入方案</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="rcard border">
+            <div class="rc-top">
+              <div>
+                <div class="rc-uni">东北农业大学</div>
+                <div class="rc-loc">黑龙江省 · 哈尔滨市</div>
+              </div>
+              <div style="text-align:right">
+                <span class="risk risk-border">边界</span>
+                <div class="acs border" style="justify-content:flex-end;margin-top:6px"><span class="v">59.9</span><span class="u">ACS</span></div>
+              </div>
+            </div>
+            <div class="rc-major">农业资源与环境</div>
+            <div class="rc-tags"><span class="badge badge-neutral">211</span><span class="badge badge-neutral">双一流</span><span class="badge badge-neutral">物理、化学</span></div>
+            <div class="kv">
+              <div class="item"><span class="k">偏好分</span><span class="v num">66.7</span></div>
+              <div class="item"><span class="k">计划</span><span class="v num">3</span></div>
+              <div class="item"><span class="k">学费</span><span class="v num">3,000 元</span></div>
+              <div class="item"><span class="k">置信度</span><span class="v num">74%</span></div>
+              <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+                <button class="btn btn-secondary btn-sm">详情</button>
+                <button class="btn btn-primary btn-sm">加入方案</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="rcard stable">
+            <div class="rc-top">
+              <div>
+                <div class="rc-uni">西南大学</div>
+                <div class="rc-loc">重庆市 · 北碚区</div>
+              </div>
+              <div style="text-align:right">
+                <span class="risk risk-stable">稳</span>
+                <div class="acs stable" style="justify-content:flex-end;margin-top:6px"><span class="v">80.0</span><span class="u">ACS</span></div>
+              </div>
+            </div>
+            <div class="rc-major">动物科学</div>
+            <div class="rc-tags"><span class="badge badge-neutral">211</span><span class="badge badge-neutral">双一流</span><span class="badge badge-neutral">物理、化学</span></div>
+            <div class="kv">
+              <div class="item"><span class="k">偏好分</span><span class="v num">66.7</span></div>
+              <div class="item"><span class="k">计划</span><span class="v num">6</span></div>
+              <div class="item"><span class="k">学费</span><span class="v num">40,000 元</span></div>
+              <div class="item"><span class="k">置信度</span><span class="v num">88%</span></div>
+              <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+                <button class="btn btn-secondary btn-sm">详情</button>
+                <button class="btn btn-primary btn-sm">加入方案</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pager">
+          <button class="pg" disabled>上一页</button>
+          <button class="pg on">1</button>
+          <button class="pg">2</button>
+          <button class="pg">3</button>
+          <button class="pg">…</button>
+          <button class="pg">379</button>
+          <button class="pg">下一页</button>
+          <span class="t-caption" style="margin-left:12px">共 18,924 条 · 每页 50</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 编辑器页 ============ -->
+<section class="sec" id="page-editor">
+  <h2>七、页面稿 · 志愿编辑器</h2>
+  <p class="lead">真实数据：方案 96/96 已满，风险层 8 / 17 / 20 / 31 / 20；左侧候选池 18,924 条、1,118 所院校。</p>
+
+  <div class="mock">
+    <div class="mock-bar"><span class="dots"><i></i><i></i><i></i></span><span>山东高考智能志愿 — 志愿编辑器</span></div>
+    <div class="mock-view">
+      <div class="app-nav">
+        <div class="app-brand"><span class="app-logo">鲁</span>山东高考智能志愿</div>
+        <div class="steps">
+          <div class="step done"><span class="n">1</span>成绩与选科</div>
+          <div class="step done"><span class="n">2</span>偏好画像</div>
+          <div class="step done"><span class="n">3</span>推荐结果</div>
+          <div class="step on"><span class="n">4</span>志愿编辑器</div>
+          <div class="step"><span class="n">5</span>志愿体检</div>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm">历史版本</button>
+          <button class="btn btn-primary btn-sm">进入志愿体检</button>
+        </div>
+      </div>
+
+      <div class="mock-body">
+        <div class="page-head">
+          <div>
+            <h3 class="page-title">第 4 步 · 志愿编辑器</h3>
+            <div class="page-sub">当前 v2 · 共 96 条志愿 · 上限 96 个　拖拽或使用上下移调整顺序，每次修改都会生成新版本</div>
+          </div>
+        </div>
+
+        <!-- 优化条 -->
+        <div class="panel" style="padding:16px;margin-bottom:16px">
+          <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap">
+            <div class="field" style="width:150px">
+              <label>风险模式</label>
+              <select class="select"><option>均衡（推荐）</option><option>稳妥</option><option>激进</option></select>
+            </div>
+            <div class="field" style="width:110px">
+              <label>目标数量</label>
+              <input class="input num" value="96">
+            </div>
+            <div class="field" style="width:130px">
+              <label>最低安全数量</label>
+              <input class="input" placeholder="可留空">
+            </div>
+            <button class="btn btn-secondary">重新优化</button>
+            <span class="t-caption" style="margin-left:auto">锁定的志愿在任何情况下都会被保留；资格待确认的志愿不会被计入保底数量</span>
+          </div>
+        </div>
+
+        <div class="two-col wide-left">
+          <!-- 左：候选池 -->
+          <div class="card" style="display:flex;flex-direction:column">
+            <div class="card-head">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+                <h4 class="card-title">候选池 <span class="num" style="color:var(--ink-500);font-weight:400">(18,924)</span></h4>
+                <button class="btn btn-primary btn-sm">加入(0)</button>
+              </div>
+              <p class="card-desc">资格不符的志愿不会出现在这里；已加入方案的志愿也不再显示</p>
+
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">
+                <span class="chip on">全部<span class="cnt">18924</span></span>
+                <span class="chip">高冲<span class="cnt">4923</span></span>
+                <span class="chip">冲<span class="cnt">375</span></span>
+                <span class="chip">边界<span class="cnt">195</span></span>
+                <span class="chip">稳<span class="cnt">7637</span></span>
+                <span class="chip">保<span class="cnt">5794</span></span>
+              </div>
+
+              <div style="display:flex;gap:8px;margin-top:10px">
+                <input class="input" style="flex:1" placeholder="搜索学校或专业（全候选池）">
+                <select class="select" style="width:110px"><option>全部省份</option></select>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap">
+                <label class="check"><input type="checkbox">985</label>
+                <label class="check"><input type="checkbox">211</label>
+                <label class="check"><input type="checkbox">双一流</label>
+                <span style="flex:1"></span>
+                <span class="t-caption">视图</span>
+                <div class="seg"><button class="on">列表</button><button>按学校</button></div>
+              </div>
+
+              <div class="countbar" style="margin-top:10px">
+                <span>可加入 <span class="strong">18,924</span> 条，当前显示第 1–8 条</span>
+              </div>
+            </div>
+
+            <div class="card-body" style="padding:0">
+              <div class="scroll-box fade-bottom">
+                <div class="scheme-row">
+                  <span class="pick"><input type="checkbox" style="accent-color:#1D4E89"></span>
+                  <div class="body">
+                    <div class="uni">大连理工大学 <span class="t-caption">· 辽宁省 大连市</span></div>
+                    <div class="major">药学　<span class="badge badge-neutral" style="height:18px;font-size:11px">物理、化学</span></div>
+                    <div class="t-caption" style="margin-top:2px">计划 11 · 学费 85,000 · 偏好 100.0 · ACS 29.9</div>
+                  </div>
+                  <span class="risk risk-high">高冲</span>
+                </div>
+                <div class="scheme-row">
+                  <span class="pick"><input type="checkbox" style="accent-color:#1D4E89"></span>
+                  <div class="body">
+                    <div class="uni">广西大学 <span class="t-caption">· 广西 南宁市</span></div>
+                    <div class="major">生物技术　<span class="badge badge-neutral" style="height:18px;font-size:11px">物理、化学</span></div>
+                    <div class="t-caption" style="margin-top:2px">计划 10 · 学费 5,973 · 偏好 66.7 · ACS 43.9</div>
+                  </div>
+                  <span class="risk risk-reach">冲</span>
+                </div>
+                <div class="scheme-row">
+                  <span class="pick"><input type="checkbox" style="accent-color:#1D4E89"></span>
+                  <div class="body">
+                    <div class="uni">东北农业大学 <span class="t-caption">· 黑龙江省 哈尔滨市</span></div>
+                    <div class="major">农业资源与环境　<span class="badge badge-neutral" style="height:18px;font-size:11px">物理、化学</span></div>
+                    <div class="t-caption" style="margin-top:2px">计划 3 · 学费 3,000 · 偏好 66.7 · ACS 59.9</div>
+                  </div>
+                  <span class="risk risk-border">边界</span>
+                </div>
+                <div class="scheme-row">
+                  <span class="pick"><input type="checkbox" style="accent-color:#1D4E89"></span>
+                  <div class="body">
+                    <div class="uni">西南大学 <span class="t-caption">· 重庆市 北碚区</span></div>
+                    <div class="major">动物科学　<span class="badge badge-neutral" style="height:18px;font-size:11px">物理、化学</span></div>
+                    <div class="t-caption" style="margin-top:2px">计划 6 · 学费 40,000 · 偏好 66.7 · ACS 80.0</div>
+                  </div>
+                  <span class="risk risk-stable">稳</span>
+                </div>
+                <div class="scheme-row">
+                  <span class="pick"><input type="checkbox" style="accent-color:#1D4E89"></span>
+                  <div class="body">
+                    <div class="uni">新疆大学 <span class="t-caption">· 新疆 乌鲁木齐</span></div>
+                    <div class="major">环境工程　<span class="badge badge-neutral" style="height:18px;font-size:11px">物理、化学</span></div>
+                    <div class="t-caption" style="margin-top:2px">计划 8 · 学费 3,500 · 偏好 66.7 · ACS 90.3</div>
+                  </div>
+                  <span class="risk risk-safe">保</span>
+                </div>
+              </div>
+              <div class="pager" style="padding:12px 0;border-top:1px solid var(--line-100)">
+                <button class="pg" disabled>上一页</button>
+                <span class="t-caption">1 / 379</span>
+                <button class="pg">下一页</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 右：我的方案 -->
+          <div class="card" style="display:flex;flex-direction:column">
+            <div class="card-head">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+                <h4 class="card-title">我的方案 <span class="num" style="color:var(--ink-500);font-weight:400">(96/96)</span></h4>
+                <span class="badge badge-ok">已满</span>
+              </div>
+              <p class="card-desc">顺序即填报顺序：越想去越靠前。同一风险层内更难的志愿建议放前面</p>
+
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">
+                <span class="chip on">全部<span class="cnt">96</span></span>
+                <span class="chip">高冲<span class="cnt">8</span></span>
+                <span class="chip">冲<span class="cnt">17</span></span>
+                <span class="chip">边界<span class="cnt">20</span></span>
+                <span class="chip">稳<span class="cnt">31</span></span>
+                <span class="chip">保<span class="cnt">20</span></span>
+              </div>
+
+              <div style="display:flex;gap:8px;margin-top:10px">
+                <select class="select" style="width:120px"><option>全部省份</option><option>湖南省（8）</option></select>
+                <select class="select" style="flex:1"><option>全部学校</option><option>湖南大学（6）</option></select>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
+                <input class="input" style="flex:1" placeholder="搜索方案内志愿">
+              </div>
+              <div style="margin-top:8px">
+                <label class="check"><input type="checkbox">只看未锁定</label>
+              </div>
+            </div>
+
+            <div class="card-body" style="padding:0">
+              <div class="scroll-box fade-bottom" style="max-height:360px">
+                <div class="scheme-row">
+                  <span class="grip">⋮⋮</span>
+                  <span class="idx">1</span>
+                  <div class="body">
+                    <div class="uni">湖南大学</div>
+                    <div class="major">生物技术</div>
+                  </div>
+                  <span class="acs-mini" style="color:var(--risk-high-fg)">27.7</span>
+                  <span class="risk risk-high">高冲</span>
+                  <div class="acts">
+                    <button class="icon-btn">↑</button><button class="icon-btn">↓</button>
+                    <button class="icon-btn is-locked">🔒</button><button class="icon-btn">✕</button>
+                  </div>
+                </div>
+                <div class="scheme-row">
+                  <span class="grip">⋮⋮</span>
+                  <span class="idx">2</span>
+                  <div class="body">
+                    <div class="uni">中南大学</div>
+                    <div class="major">交通运输类</div>
+                  </div>
+                  <span class="acs-mini" style="color:var(--risk-high-fg)">27.8</span>
+                  <span class="risk risk-high">高冲</span>
+                  <div class="acts">
+                    <button class="icon-btn">↑</button><button class="icon-btn">↓</button>
+                    <button class="icon-btn">🔓</button><button class="icon-btn">✕</button>
+                  </div>
+                </div>
+                <div class="scheme-row">
+                  <span class="grip">⋮⋮</span>
+                  <span class="idx">3</span>
+                  <div class="body">
+                    <div class="uni">湖南大学</div>
+                    <div class="major">数学类</div>
+                  </div>
+                  <span class="acs-mini" style="color:var(--risk-high-fg)">27.8</span>
+                  <span class="risk risk-high">高冲</span>
+                  <div class="acts">
+                    <button class="icon-btn">↑</button><button class="icon-btn">↓</button>
+                    <button class="icon-btn">🔓</button><button class="icon-btn">✕</button>
+                  </div>
+                </div>
+                <div class="scheme-row">
+                  <span class="grip">⋮⋮</span>
+                  <span class="idx">4</span>
+                  <div class="body">
+                    <div class="uni">华东师范大学</div>
+                    <div class="major">微电子科学与工程</div>
+                  </div>
+                  <span class="acs-mini" style="color:var(--risk-high-fg)">28.8</span>
+                  <span class="risk risk-high">高冲</span>
+                  <div class="acts">
+                    <button class="icon-btn">↑</button><button class="icon-btn">↓</button>
+                    <button class="icon-btn">🔓</button><button class="icon-btn">✕</button>
+                  </div>
+                </div>
+                <div class="scheme-row">
+                  <span class="grip">⋮⋮</span>
+                  <span class="idx">5</span>
+                  <div class="body">
+                    <div class="uni">厦门大学</div>
+                    <div class="major">物理学类</div>
+                  </div>
+                  <span class="acs-mini" style="color:var(--risk-high-fg)">28.9</span>
+                  <span class="risk risk-high">高冲</span>
+                  <div class="acts">
+                    <button class="icon-btn">↑</button><button class="icon-btn">↓</button>
+                    <button class="icon-btn">🔓</button><button class="icon-btn">✕</button>
+                  </div>
+                </div>
+                <div class="scheme-row">
+                  <span class="grip">⋮⋮</span>
+                  <span class="idx">6</span>
+                  <div class="body">
+                    <div class="uni">四川大学</div>
+                    <div class="major">数学类</div>
+                  </div>
+                  <span class="acs-mini" style="color:var(--risk-high-fg)">28.9</span>
+                  <span class="risk risk-high">高冲</span>
+                  <div class="acts">
+                    <button class="icon-btn">↑</button><button class="icon-btn">↓</button>
+                    <button class="icon-btn">🔓</button><button class="icon-btn">✕</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="panel">
+      <h3 style="margin-top:0">筛选生效时的拖拽禁用提示</h3>
+      <div class="alert alert-warn">
+        <span class="bar"></span>
+        <span>筛选生效时不能调整顺序（拖拽与上下移已禁用），请清除筛选后再排序，否则隐藏的志愿会一起位移。<a href="#" style="color:inherit;text-decoration:underline">清除筛选</a></span>
+      </div>
+      <p class="note">这条提示必须常驻在筛选栏下方，而不是只在拖拽时才出现 —— 用户需要先知道"为什么拖不动"。</p>
+    </div>
+    <div class="panel">
+      <h3 style="margin-top:0">方案已满时的加入提示</h3>
+      <div class="alert alert-bad">
+        <span class="bar"></span>
+        <span>加入后志愿数将超过目标 96 个（当前 96 个），请先删除或调整目标数量。</span>
+      </div>
+      <p class="note">用错误色而不是灰化按钮 —— 灰化不解释原因，用户会以为是 bug。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 状态 ============ -->
+<section class="sec" id="states">
+  <h2>八、空状态 / 加载 / 错误</h2>
+  <div class="grid g3">
+    <div class="panel">
+      <div class="empty">
+        <svg class="ico" viewBox="0 0 44 44" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          <rect x="7" y="10" width="30" height="26" rx="3"></rect>
+          <path d="M7 18h30M15 6v8M29 6v8M14 25h6M14 31h12"></path>
+        </svg>
+        <div class="ttl">当前筛选下没有志愿</div>
+        <div class="dsc">试试取消「只看 985」，或把省份放宽到全部。候选池共 18,924 条。</div>
+        <button class="btn btn-secondary btn-sm" style="margin-top:12px">清除全部筛选</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="skel skel-title"></div>
+      <div class="skel skel-chip"></div><div class="skel skel-chip" style="width:48px"></div>
+      <div style="margin-top:12px">
+        <div class="skel skel-line" style="width:90%"></div>
+        <div class="skel skel-line" style="width:70%"></div>
+        <div class="skel skel-line" style="width:80%"></div>
+        <div class="skel skel-line" style="width:52%"></div>
+      </div>
+      <div style="margin-top:16px">
+        <div class="skel skel-title"></div>
+        <div class="skel skel-line" style="width:88%"></div>
+        <div class="skel skel-line" style="width:64%"></div>
+      </div>
+      <p class="note" style="margin-top:12px">骨架屏代替"正在读取…"文字。形状要贴近真实内容，否则切换时会跳。</p>
+    </div>
+
+    <div class="panel">
+      <div class="alert alert-bad" style="margin-bottom:12px">
+        <span class="bar"></span>
+        <span><strong>推荐生成失败</strong><br>优化器在 30 秒内未找到可行解。可能是「最低安全数量」设得过高，或锁定的志愿与目标数量冲突。</span>
+      </div>
+      <button class="btn btn-secondary btn-sm">放宽条件重试</button>
+      <button class="btn btn-ghost btn-sm">查看详情</button>
+      <p class="note" style="margin-top:12px">错误信息必须说清"发生了什么 + 可能的原因 + 下一步怎么做"，不要只抛一行异常文本。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 可访问性 ============ -->
+<section class="sec" id="a11y">
+  <h2>九、可访问性与适配</h2>
+  <div class="grid g2">
+    <div class="panel">
+      <h3 style="margin-top:0">对比度实测</h3>
+      <table class="spec-table">
+        <tr><th>组合</th><th>比值</th><th>结论</th></tr>
+        <tr><td>ink-900 标题 / 白底</td><td>17.85:1</td><td>AAA</td></tr>
+        <tr><td>ink-700 正文 / 白底</td><td>10.35:1</td><td>AAA</td></tr>
+        <tr><td>ink-500 辅助与占位 / 白底</td><td>4.76:1</td><td>AA</td></tr>
+        <tr><td>白字 / brand-600 按钮</td><td>8.39:1</td><td>AAA</td></tr>
+        <tr><td>risk 高冲 文字 / 其浅底</td><td>6.05:1</td><td>AA</td></tr>
+        <tr><td>risk 冲 文字 / 其浅底</td><td>4.79:1</td><td>AA</td></tr>
+        <tr><td>risk 边界 文字 / 其浅底</td><td>4.76:1</td><td>AA</td></tr>
+        <tr><td>risk 稳 文字 / 其浅底</td><td>5.15:1</td><td>AA</td></tr>
+        <tr><td>risk 保 文字 / 其浅底</td><td>5.02:1</td><td>AA</td></tr>
+        <tr><td>ink-400 图标 / 白底</td><td>3.92:1</td><td>非文本 3:1 达标</td></tr>
+      </table>
+    </div>
+    <div class="panel">
+      <h3 style="margin-top:0">适配与可访问性要求</h3>
+      <ul class="t-small" style="margin:0;padding-left:18px;line-height:2">
+        <li>设计宽度 1440，最小支持 1280（两栏各不低于 560px，再窄则上下堆叠）</li>
+        <li>所有可点区域 ≥ 24×24；表单控件高度 36</li>
+        <li>焦点环统一 <code>0 0 0 3px rgba(29,78,137,.18)</code>，键盘 Tab 可见</li>
+        <li>风险层不靠颜色单独表达，永远带中文名</li>
+        <li>尊重 <code>prefers-reduced-motion</code>：关闭骨架动画与过渡</li>
+        <li>数字用等宽，避免位次位数不同导致错列</li>
+        <li>不做深色模式（本版范围外）</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</div>
+</body>
+</html>

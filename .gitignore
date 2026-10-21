@@ -52,3 +52,6 @@ docs/_preview*/
 
 # local-only helper (environment-specific network workaround)
 scripts/push_via_api.py
+
+# 设计稿用的真实样本数据（由 scripts/dump_design_sample.py 生成，可随时重跑）
+docs/design/_sample-data.json
