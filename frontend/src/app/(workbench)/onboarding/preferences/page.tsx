@@ -15,7 +15,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Icon } from "@/components/workbench/icon";
 import { useToast } from "@/components/workbench/toast";
@@ -48,6 +48,7 @@ export default function PreferencesPage() {
   const router = useRouter();
   const toast = useToast();
   const wb = useWorkbench();
+  const queryClient = useQueryClient();
   const { state: flow, update, loaded } = useFlowState();
 
   const options = useQuery({
@@ -203,10 +204,13 @@ export default function PreferencesPage() {
         ],
       });
     },
-    onSuccess: (preference) => {
+    onSuccess: async (preference) => {
       update({ preferenceId: preference.id });
       setSavedVersion(preference.version);
       toast.show("偏好已保存", "ok");
+      // 偏好变了：推荐已过期，工作台摘要与推荐页的依据都要重新取
+      await queryClient.invalidateQueries({ queryKey: ["wb"] });
+      await queryClient.invalidateQueries({ queryKey: ["reco-items"] });
       router.push("/recommendations");
     },
     onError: (error) => toast.show(errorMessage(error), "error"),

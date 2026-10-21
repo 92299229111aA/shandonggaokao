@@ -11,7 +11,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { Icon } from "@/components/workbench/icon";
 import { useToast } from "@/components/workbench/toast";
@@ -89,6 +89,7 @@ export default function ProfilePage() {
   const router = useRouter();
   const toast = useToast();
   const wb = useWorkbench();
+  const queryClient = useQueryClient();
   const { state: flow, update, loaded } = useFlowState();
 
   const editing = Boolean(flow.profileId);
@@ -245,7 +246,7 @@ export default function ProfilePage() {
         attributes: attributesPayload,
       });
     },
-    onSuccess: (saved) => {
+    onSuccess: async (saved) => {
       try {
         window.localStorage.removeItem(DRAFT_KEY);
       } catch {
@@ -258,6 +259,8 @@ export default function ProfilePage() {
         ...(editing ? {} : { preferenceId: null, sessionId: null, schemeId: null }),
       });
       toast.show(editing ? "档案已更新，旧推荐与报告需重新生成" : "档案已保存", "ok");
+      // 档案变了，工作台里缓存的档案/偏好/推荐状态全部失效
+      await queryClient.invalidateQueries({ queryKey: ["wb"] });
       router.push("/onboarding/preferences");
     },
     onError: (error) => {

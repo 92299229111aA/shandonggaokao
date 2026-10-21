@@ -160,7 +160,10 @@ export default function RecommendationsPage() {
       update({ schemeId: created.id });
       return created;
     },
-    onSuccess: () => router.push("/schemes"),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["wb"] });
+      router.push("/schemes");
+    },
     onError: (error) => toast.show(errorMessage(error), "error"),
   });
 
