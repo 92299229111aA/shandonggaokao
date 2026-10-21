@@ -29,7 +29,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Icon } from "@/components/workbench/icon";
@@ -44,7 +44,29 @@ import { RISK_LABELS, RISK_ORDER } from "@/lib/utils";
 
 const POOL_PAGE_SIZE = 50;
 
+/**
+ * `useSearchParams()` 在静态预渲染时必须处于 Suspense 边界内，
+ * 否则 `next build` 会直接失败（CSR bailout）。所以外面包一层。
+ */
 export default function SchemeEditorPage() {
+  return (
+    <Suspense fallback={<EditorFallback />}>
+      <EditorContent />
+    </Suspense>
+  );
+}
+
+function EditorFallback() {
+  return (
+    <div className="card" style={{ padding: 24 }}>
+      <span className="skeleton title" />
+      <span className="skeleton line w80" />
+      <span className="skeleton line w60" />
+    </div>
+  );
+}
+
+function EditorContent() {
   const router = useRouter();
   const toast = useToast();
   const queryClient = useQueryClient();
